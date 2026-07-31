@@ -1,6 +1,7 @@
 import { BrowserWindow, screen, shell, protocol } from 'electron'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
+import { resolvePathWithinRoot } from './securityBoundaries'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -267,17 +268,17 @@ export function registerCustomProtocol(
   customAvatarsPath?: string
 ): void {
   protocol.registerFileProtocol('alice-image', (request, callback) => {
-    const url = request.url.substring('alice-image://'.length)
-    const decodedUrlPath = decodeURIComponent(url)
-    const filePath = path.normalize(
-      path.join(generatedImagesPath, decodedUrlPath)
-    )
-
-    if (filePath.startsWith(path.normalize(generatedImagesPath))) {
+    try {
+      const url = request.url.substring('alice-image://'.length)
+      const decodedUrlPath = decodeURIComponent(url)
+      const filePath = resolvePathWithinRoot(
+        generatedImagesPath,
+        decodedUrlPath
+      )
       callback({ path: filePath })
-    } else {
+    } catch {
       console.error(
-        `[Protocol] Denied access to unsafe path: ${filePath} from URL: ${request.url}`
+        `[Protocol] Denied access to unsafe image path from URL: ${request.url}`
       )
       callback({ error: -6 })
     }
@@ -285,17 +286,17 @@ export function registerCustomProtocol(
 
   if (customAvatarsPath) {
     protocol.registerFileProtocol('alice-avatar', (request, callback) => {
-      const url = request.url.substring('alice-avatar://'.length)
-      const decodedUrlPath = decodeURIComponent(url)
-      const filePath = path.normalize(
-        path.join(customAvatarsPath, decodedUrlPath)
-      )
-
-      if (filePath.startsWith(path.normalize(customAvatarsPath))) {
+      try {
+        const url = request.url.substring('alice-avatar://'.length)
+        const decodedUrlPath = decodeURIComponent(url)
+        const filePath = resolvePathWithinRoot(
+          customAvatarsPath,
+          decodedUrlPath
+        )
         callback({ path: filePath })
-      } else {
+      } catch {
         console.error(
-          `[Protocol] Denied avatar access to unsafe path: ${filePath} from URL: ${request.url}`
+          `[Protocol] Denied access to unsafe avatar path from URL: ${request.url}`
         )
         callback({ error: -6 })
       }

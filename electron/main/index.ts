@@ -255,7 +255,7 @@ function startWebSocketServer() {
       const port = startPort + i
       try {
         console.log(`[WebSocket] Trying alternative port ${port}...`)
-        wss = new WebSocketServer({ port })
+        wss = new WebSocketServer({ host: '127.0.0.1', port })
         setupWebSocketHandlers(wss, port)
         return // Success
       } catch (error: any) {
@@ -277,7 +277,7 @@ function startWebSocketServer() {
       const websocketPort = settings?.websocketPort || 5421
 
       try {
-        wss = new WebSocketServer({ port: websocketPort })
+        wss = new WebSocketServer({ host: '127.0.0.1', port: websocketPort })
         setupWebSocketHandlers(wss, websocketPort)
       } catch (error: any) {
         console.error(
@@ -296,7 +296,7 @@ function startWebSocketServer() {
       )
 
       try {
-        wss = new WebSocketServer({ port: 5421 })
+        wss = new WebSocketServer({ host: '127.0.0.1', port: 5421 })
         setupWebSocketHandlers(wss, 5421)
       } catch (serverError: any) {
         console.error(

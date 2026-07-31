@@ -1,6 +1,7 @@
 import { ref, watch, onUnmounted, onMounted } from 'vue'
 import * as vad from '@ricky0123/vad-web'
 import { float32ArrayToWav } from '../utils/audioProcess'
+import { createVadOptions } from './vadRuntime'
 import { useGeneralStore } from '../stores/generalStore'
 import { useConversationStore } from '../stores/conversationStore'
 import { useSettingsStore } from '../stores/settingsStore'
@@ -127,43 +128,52 @@ export function useAudioProcessing() {
         `[VAD Manager] Attempting to load VAD with baseAssetPath: ${assetPath}`
       )
 
-      const vadInstance = await vad.MicVAD.new({
-        baseAssetPath: assetPath,
-        onnxWASMBasePath: assetPath,
-        onSpeechStart: () => {
-          if (
-            audioState.value === 'SPEAKING' ||
-            audioState.value === 'WAITING_FOR_RESPONSE'
-          ) {
+      const vadInstance = await vad.MicVAD.new(
+        createVadOptions(assetPath, {
+          onSpeechStart: () => {
+            if (
+              audioState.value === 'SPEAKING' ||
+              audioState.value === 'WAITING_FOR_RESPONSE'
+            ) {
+              console.log(
+                `[VAD Barge-In] User interrupted Alice during ${audioState.value}. Stopping processes.`
+              )
+              eventBus.emit('cancel-llm-stream')
+              generalStore.stopPlaybackAndClearQueue()
+            }
+            isSpeechDetected.value = true
+            console.log('[VAD Callback] Speech started.')
+          },
+          onSpeechEnd: (audio: Float32Array) => {
             console.log(
-              `[VAD Barge-In] User interrupted Alice during ${audioState.value}. Stopping processes.`
+              `[VAD Callback] Speech ended. Audio length: ${audio?.length}. Current state: ${audioState.value}`
             )
-            eventBus.emit('cancel-llm-stream')
-            generalStore.stopPlaybackAndClearQueue()
-          }
-          isSpeechDetected.value = true
-          console.log('[VAD Callback] Speech started.')
-        },
-        onSpeechEnd: (audio: Float32Array) => {
-          console.log(
-            `[VAD Callback] Speech ended. Audio length: ${audio?.length}. Current state: ${audioState.value}`
-          )
-          if (audioState.value === 'LISTENING' && isSpeechDetected.value) {
-            processAudioRecording(audio)
-          } else {
-            console.log(
-              '[VAD Callback] Speech ended, but not processing (state changed or no speech detected).'
-            )
-            isSpeechDetected.value = false
-          }
-        },
-      })
+            if (audioState.value === 'LISTENING' && isSpeechDetected.value) {
+              processAudioRecording(audio)
+            } else {
+              console.log(
+                '[VAD Callback] Speech ended, but not processing (state changed or no speech detected).'
+              )
+              isSpeechDetected.value = false
+            }
+          },
+        })
+      )
+
+      if (!isRecordingRequested.value) {
+        console.log(
+          '[VAD Manager] Recording was disabled during initialization; destroying the unused VAD instance.'
+        )
+        await vadInstance.destroy()
+        return
+      }
 
       myvad.value = vadInstance
-      myvad.value.start()
+      await myvad.value.start()
       console.log('[VAD Manager] VAD initialized and started successfully.')
     } catch (error) {
       console.error('[VAD Manager] VAD initialization failed:', error)
+      await destroyVAD()
       setAudioState('IDLE')
       generalStore.statusMessage = 'Error: Mic/VAD init failed'
       isSpeechDetected.value = false
@@ -177,13 +187,14 @@ export function useAudioProcessing() {
       return
     }
     console.log('[VAD Manager] Destroying VAD instance...')
+    const vadInstance = myvad.value
+    myvad.value = null
     try {
-      myvad.value.pause()
-      console.log('[VAD Manager] VAD paused.')
+      await vadInstance.destroy()
+      console.log('[VAD Manager] VAD destroyed.')
     } catch (error) {
-      console.error('[VAD Manager] Error pausing VAD:', error)
+      console.error('[VAD Manager] Error destroying VAD:', error)
     } finally {
-      myvad.value = null
       isSpeechDetected.value = false
       console.log('[VAD Manager] VAD instance reference removed.')
     }

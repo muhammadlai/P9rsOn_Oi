@@ -104,6 +104,12 @@ import {
   loadCustomAvatarsFromDisk,
   refreshCustomAvatars,
 } from './customAvatarsManager'
+import {
+  getAllowedHttpOrigins,
+  getHttpOriginsRequiringApproval,
+  resolvePathWithinRoot,
+  validateHttpBridgeUrl,
+} from './securityBoundaries'
 
 const USER_DATA_PATH = app.getPath('userData')
 const GENERATED_IMAGES_DIR_NAME = 'generated_images'
@@ -631,6 +637,41 @@ export function registerIPCHandlers(): void {
     async (event, settingsToSave: AppSettings) => {
       try {
         const oldSettings = await loadSettings()
+        const originsRequiringApproval = getHttpOriginsRequiringApproval(
+          oldSettings,
+          settingsToSave
+        )
+
+        if (originsRequiringApproval.length > 0) {
+          const detail = originsRequiringApproval
+            .map(origin => `• ${origin}`)
+            .join('\n')
+          const options = {
+            type: 'warning' as const,
+            buttons: ['Cancel', 'Allow'],
+            defaultId: 0,
+            cancelId: 0,
+            noLink: true,
+            title: 'Allow network service?',
+            message:
+              originsRequiringApproval.length === 1
+                ? 'Alice wants to connect to a new network service.'
+                : 'Alice wants to connect to new network services.',
+            detail: `${detail}\n\nOnly allow services that you configured and trust.`,
+          }
+          const owner = BrowserWindow.fromWebContents(event.sender)
+          const confirmation = owner
+            ? await dialog.showMessageBox(owner, options)
+            : await dialog.showMessageBox(options)
+
+          if (confirmation.response !== 1) {
+            return {
+              success: false,
+              error: 'Network service change was not approved.',
+            }
+          }
+        }
+
         await saveSettings(settingsToSave)
 
         // Handle hotkey changes
@@ -892,7 +933,7 @@ export function registerIPCHandlers(): void {
       try {
         await mkdir(GENERATED_IMAGES_FULL_PATH, { recursive: true })
 
-        const absoluteFilePath = path.join(
+        const absoluteFilePath = resolvePathWithinRoot(
           GENERATED_IMAGES_FULL_PATH,
           args.fileName
         )
@@ -1133,15 +1174,25 @@ export function registerIPCHandlers(): void {
           timeout = 15000,
         } = args
 
-        console.log(`[IPC http:request] Making ${method} request to:`, url)
+        const settings = await loadSettings()
+        const validatedUrl = validateHttpBridgeUrl(
+          url,
+          getAllowedHttpOrigins(settings)
+        )
+
+        console.log(
+          `[IPC http:request] Making ${method} request to:`,
+          validatedUrl
+        )
 
         const response = await axios({
-          url,
+          url: validatedUrl,
           method,
           headers,
           params,
           data,
           timeout,
+          maxRedirects: 0,
           validateStatus: () => true, // Don't throw on HTTP error status codes
         })
 
@@ -1201,6 +1252,20 @@ export function registerIPCHandlers(): void {
         }
       }
 
+      let validatedUrl: string
+      try {
+        const settings = await loadSettings()
+        validatedUrl = validateHttpBridgeUrl(
+          url,
+          getAllowedHttpOrigins(settings)
+        )
+      } catch (error: any) {
+        return {
+          success: false,
+          error: error.message,
+        }
+      }
+
       const abortController = new AbortController()
       activeHttpStreams.set(requestId, abortController)
       const sender = event.sender
@@ -1236,15 +1301,19 @@ export function registerIPCHandlers(): void {
         }
 
         try {
-          console.log(`[IPC http:stream] Making ${method} request to:`, url)
+          console.log(
+            `[IPC http:stream] Making ${method} request to:`,
+            validatedUrl
+          )
 
           const response = await axios({
-            url,
+            url: validatedUrl,
             method,
             headers,
             params,
             data,
             timeout,
+            maxRedirects: 0,
             responseType: 'stream',
             signal: abortController.signal,
             validateStatus: () => true,
