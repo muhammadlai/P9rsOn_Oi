@@ -56,6 +56,8 @@ let hnswIndex: HierarchicalNSWIndex | null = null
 let isStoreInitialized = false
 let labelToChunkId: Map<number, string> = new Map()
 let hasRecoveredFromCorruption = false
+let indexPathsPromise: Promise<{ indexed: number; skipped: number }> | null =
+  null
 
 export interface RagSearchResult {
   id: string
@@ -1212,7 +1214,7 @@ async function collectIndexablePaths(
   return results
 }
 
-export async function indexPaths(
+async function indexPathsInternal(
   paths: string[],
   options?: { recursive?: boolean }
 ): Promise<{ indexed: number; skipped: number }> {
@@ -1313,6 +1315,72 @@ export async function indexPaths(
     console.warn('[RAG] Failed to rebuild index from DB:', error)
   }
   return { indexed, skipped }
+}
+
+export async function indexPaths(
+  paths: string[],
+  options?: { recursive?: boolean }
+): Promise<{ indexed: number; skipped: number }> {
+  if (indexPathsPromise) {
+    return indexPathsPromise
+  }
+
+  indexPathsPromise = indexPathsInternal(paths, options)
+  try {
+    return await indexPathsPromise
+  } finally {
+    indexPathsPromise = null
+  }
+}
+
+async function countLegacyEmbeddings(): Promise<number> {
+  const currentDb = ensureDb()
+  const row = currentDb
+    .prepare(
+      `SELECT COUNT(*) as count
+       FROM rag_documents
+       WHERE embedding_model != ?
+          OR EXISTS (
+            SELECT 1 FROM rag_chunks
+            WHERE rag_chunks.doc_id = rag_documents.id
+              AND rag_chunks.embedding_model != ?
+          )`
+    )
+    .get(RAG_EMBEDDING_MODEL, RAG_EMBEDDING_MODEL) as { count: number }
+  return row.count || 0
+}
+
+/**
+ * Rebuild configured RAG paths after an embedding-model migration. This is
+ * intentionally retryable: if the backend/model is unavailable, legacy rows
+ * stay marked and the next launch can try again.
+ */
+export async function reindexRagIfNeeded(
+  paths: string[],
+  options?: { recursive?: boolean }
+): Promise<{
+  required: boolean
+  indexed: number
+  skipped: number
+}> {
+  await initializeRagStore()
+  const legacyCount = await countLegacyEmbeddings()
+  if (legacyCount === 0) {
+    return { required: false, indexed: 0, skipped: 0 }
+  }
+
+  if (!paths || paths.length === 0) {
+    console.warn(
+      `[RAG] ${legacyCount} legacy document(s) need reindexing, but no configured RAG paths are available.`
+    )
+    return { required: true, indexed: 0, skipped: 0 }
+  }
+
+  console.log(
+    `[RAG] Reindexing ${legacyCount} legacy document(s) with ${RAG_EMBEDDING_MODEL}.`
+  )
+  const result = await indexPaths(paths, options)
+  return { required: true, ...result }
 }
 
 function keywordSearch(

@@ -12,6 +12,7 @@ import {
   initializeThoughtVectorStore,
   ensureSaveOnQuit as ensureThoughtStoreSave,
 } from './thoughtVectorStore'
+import { reindexRagIfNeeded } from './ragDocumentStore'
 import {
   initializeSchedulerDB,
   loadAndScheduleAllTasks,
@@ -437,6 +438,24 @@ app.whenReady().then(async () => {
     const backendStarted = await backendManager.start()
     if (backendStarted) {
       console.log('[Main App Ready] Go AI backend started successfully')
+      if (initialSettings?.ragEnabled && initialSettings.ragPaths?.length) {
+        void reindexRagIfNeeded(initialSettings.ragPaths, {
+          recursive: true,
+        })
+          .then(result => {
+            if (result.required) {
+              console.log(
+                `[Main App Ready] Automatic RAG migration finished: indexed ${result.indexed}, skipped ${result.skipped}.`
+              )
+            }
+          })
+          .catch(error => {
+            console.warn(
+              '[Main App Ready] Automatic RAG migration will retry on the next launch:',
+              error
+            )
+          })
+      }
     } else {
       console.error('[Main App Ready] Failed to start Go AI backend')
     }
