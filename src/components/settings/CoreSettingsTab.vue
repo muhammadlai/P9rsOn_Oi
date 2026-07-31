@@ -263,8 +263,7 @@
                   type="button"
                   class="btn btn-sm btn-primary"
                   :disabled="
-                    codexAuthStatus.isLoading ||
-                    codexAuthStatus.authInProgress
+                    codexAuthStatus.isLoading || codexAuthStatus.authInProgress
                   "
                   @click="startCodexAuth"
                 >
@@ -648,12 +647,12 @@
             class="select select-bordered w-full focus:select-primary"
           >
             <option value="openai">OpenAI (Cloud)</option>
-            <option value="local">Local (all-MiniLM-L6-v2)</option>
+            <option value="local">Local (multi-lang E5)</option>
           </select>
           <p class="text-xs text-gray-400 mt-1">
-            Choose between cloud-based OpenAI embeddings or local
-            all-MiniLM-L6-v2 embeddings. Your existing data is preserved when
-            switching.
+            Choose between cloud-based OpenAI embeddings or local multi-lang E5
+            embeddings. Existing text is preserved; local vectors are rebuilt
+            when the model changes.
           </p>
         </div>
       </div>

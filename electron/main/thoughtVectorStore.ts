@@ -1,6 +1,7 @@
 import { app } from 'electron'
 import path from 'node:path'
 import fs from 'node:fs/promises'
+import { existsSync, unlinkSync } from 'node:fs'
 import HnswlibNode from 'hnswlib-node'
 const { HierarchicalNSW } = HnswlibNode
 type HierarchicalNSWIndex = InstanceType<typeof HierarchicalNSW>
@@ -9,7 +10,9 @@ import { randomUUID } from 'node:crypto'
 type SQLiteDatabase = any
 
 const OPENAI_VECTOR_DIMENSION = 1536 // OpenAI embedding dimension
-const LOCAL_VECTOR_DIMENSION = 384 // all-MiniLM-L6-v2 embedding dimension (Go backend)
+const LOCAL_VECTOR_DIMENSION = 384 // multilingual-e5-small embedding dimension (Go backend)
+const LOCAL_EMBEDDING_MODEL =
+  'intfloat/multilingual-e5-small@614241f622f53c4eeff9890bdc4f31cfecc418b3'
 const MAX_ELEMENTS_HNSW = 10000
 const HNSW_OPENAI_INDEX_FILE_NAME = 'alice-thoughts-hnsw-openai.index'
 const HNSW_LOCAL_INDEX_FILE_NAME = 'alice-thoughts-hnsw-local.index'
@@ -118,6 +121,57 @@ function initDB() {
   `)
 
   runDualEmbeddingMigration()
+  runMultilingualLocalEmbeddingMigration()
+}
+
+function runMultilingualLocalEmbeddingMigration() {
+  if (!db) return
+
+  const flagName = 'multilingual_e5_local_embeddings'
+  const migrationFlag = db
+    .prepare('SELECT completed FROM migration_flags WHERE flag_name = ?')
+    .get(flagName) as { completed?: number } | undefined
+  if (migrationFlag?.completed) return
+
+  try {
+    // all-MiniLM-L6-v2 and multilingual-e5-small both use 384 dimensions,
+    // but their vector spaces are incompatible. Invalidate only local
+    // vectors; OpenAI embeddings and the original text remain untouched.
+    const thoughts = db
+      .prepare(
+        'UPDATE thoughts SET embedding_local = NULL WHERE embedding_local IS NOT NULL'
+      )
+      .run().changes
+    const memories = db
+      .prepare(
+        'UPDATE long_term_memories SET embedding_local = NULL WHERE embedding_local IS NOT NULL'
+      )
+      .run().changes
+    db.prepare(
+      'INSERT OR REPLACE INTO migration_flags (flag_name, completed) VALUES (?, 1)'
+    ).run(flagName)
+
+    if (existsSync(hnswLocalIndexFilePath)) {
+      try {
+        unlinkSync(hnswLocalIndexFilePath)
+      } catch (error) {
+        console.warn(
+          '[ThoughtVectorStore Migration] Failed to remove stale local HNSW index:',
+          error
+        )
+      }
+    }
+    if (thoughts || memories) {
+      console.log(
+        `[ThoughtVectorStore Migration] Invalidated ${thoughts} legacy thought and ${memories} legacy memory local embeddings for ${LOCAL_EMBEDDING_MODEL}.`
+      )
+    }
+  } catch (error) {
+    console.error(
+      '[ThoughtVectorStore Migration] Failed to invalidate legacy local embeddings:',
+      error
+    )
+  }
 }
 
 function runDualEmbeddingMigration() {

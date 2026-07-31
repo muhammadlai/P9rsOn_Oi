@@ -15,6 +15,9 @@ type HierarchicalNSWIndex = InstanceType<typeof HierarchicalNSW>
 type SQLiteDatabase = any
 
 const LOCAL_VECTOR_DIMENSION = 384
+const RAG_EMBEDDING_MODEL =
+  'intfloat/multilingual-e5-small@614241f622f53c4eeff9890bdc4f31cfecc418b3'
+const LEGACY_RAG_EMBEDDING_MODEL = 'legacy-all-MiniLM-L6-v2'
 const MAX_ELEMENTS_HNSW = 200000
 const RAG_DB_FILE_NAME = 'alice-rag.sqlite'
 const RAG_HNSW_INDEX_FILE_NAME = 'alice-rag-hnsw-local.index'
@@ -98,6 +101,7 @@ function initDb(): void {
       mtime INTEGER NOT NULL,
       size INTEGER NOT NULL,
       title TEXT NOT NULL,
+      embedding_model TEXT NOT NULL DEFAULT '${RAG_EMBEDDING_MODEL}',
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     );
@@ -110,6 +114,7 @@ function initDb(): void {
       chunk_index INTEGER NOT NULL,
       text TEXT NOT NULL,
       embedding_local BLOB NOT NULL,
+      embedding_model TEXT NOT NULL DEFAULT '${LEGACY_RAG_EMBEDDING_MODEL}',
       token_count INTEGER NOT NULL,
       page INTEGER,
       section TEXT,
@@ -117,6 +122,8 @@ function initDb(): void {
     );
     CREATE INDEX IF NOT EXISTS idx_rag_chunks_doc_id ON rag_chunks (doc_id);
   `)
+
+  ensureRagEmbeddingModelColumns(db)
 
   try {
     ensureFtsReady(db)
@@ -133,6 +140,7 @@ function initDb(): void {
           mtime INTEGER NOT NULL,
           size INTEGER NOT NULL,
           title TEXT NOT NULL,
+          embedding_model TEXT NOT NULL DEFAULT '${RAG_EMBEDDING_MODEL}',
           created_at TEXT NOT NULL,
           updated_at TEXT NOT NULL
         );
@@ -144,6 +152,7 @@ function initDb(): void {
           chunk_index INTEGER NOT NULL,
           text TEXT NOT NULL,
           embedding_local BLOB NOT NULL,
+          embedding_model TEXT NOT NULL DEFAULT '${LEGACY_RAG_EMBEDDING_MODEL}',
           token_count INTEGER NOT NULL,
           page INTEGER,
           section TEXT,
@@ -151,11 +160,38 @@ function initDb(): void {
         );
         CREATE INDEX IF NOT EXISTS idx_rag_chunks_doc_id ON rag_chunks (doc_id);
       `)
+      ensureRagEmbeddingModelColumns(db)
       ensureFtsReady(db)
     } else {
       throw error
     }
   }
+}
+
+function ensureRagEmbeddingModelColumns(currentDb: SQLiteDatabase): void {
+  const addColumnIfMissing = (
+    table: string,
+    column: string,
+    definition: string
+  ) => {
+    const columns = currentDb
+      .prepare(`PRAGMA table_info(${table})`)
+      .all() as Array<{ name: string }>
+    if (!columns.some(item => item.name === column)) {
+      currentDb.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`)
+    }
+  }
+
+  addColumnIfMissing(
+    'rag_documents',
+    'embedding_model',
+    `TEXT NOT NULL DEFAULT '${LEGACY_RAG_EMBEDDING_MODEL}'`
+  )
+  addColumnIfMissing(
+    'rag_chunks',
+    'embedding_model',
+    `TEXT NOT NULL DEFAULT '${LEGACY_RAG_EMBEDDING_MODEL}'`
+  )
 }
 
 async function initializeIndex(): Promise<void> {
@@ -574,6 +610,7 @@ function ensureDb(): SQLiteDatabase {
 
 type RagIndexMeta = {
   version: number
+  embeddingModel: string
   count: number
   maxCreatedAt: string | null
 }
@@ -585,9 +622,9 @@ function getIndexFingerprintFromDb(): {
   const currentDb = ensureDb()
   const row = currentDb
     .prepare(
-      'SELECT COUNT(*) as count, MAX(created_at) as maxCreatedAt FROM rag_chunks'
+      'SELECT COUNT(*) as count, MAX(created_at) as maxCreatedAt FROM rag_chunks WHERE embedding_model = ?'
     )
-    .get() as { count: number; maxCreatedAt: string | null }
+    .get(RAG_EMBEDDING_MODEL) as { count: number; maxCreatedAt: string | null }
   return {
     count: row.count || 0,
     maxCreatedAt: row.maxCreatedAt || null,
@@ -600,6 +637,7 @@ function isIndexMetaMatch(
 ): boolean {
   return (
     meta.version === 1 &&
+    meta.embeddingModel === RAG_EMBEDDING_MODEL &&
     meta.count === fingerprint.count &&
     meta.maxCreatedAt === fingerprint.maxCreatedAt
   )
@@ -623,6 +661,7 @@ async function writeIndexMeta(meta: {
   try {
     const payload: RagIndexMeta = {
       version: 1,
+      embeddingModel: RAG_EMBEDDING_MODEL,
       count: meta.count,
       maxCreatedAt: meta.maxCreatedAt,
     }
@@ -774,7 +813,7 @@ function getBackendUrl(): string {
 async function generateEmbeddings(texts: string[]): Promise<number[][]> {
   const response = await axios.post(
     `${getBackendUrl()}/api/embeddings/generate-batch`,
-    { texts },
+    { texts, input_type: 'passage' },
     { timeout: 60000 }
   )
   if (!response.data?.success) {
@@ -807,10 +846,16 @@ async function upsertDocument(
   const currentDb = ensureDb()
   const existing = currentDb
     .prepare(
-      'SELECT id, file_hash, mtime, size FROM rag_documents WHERE path = ?'
+      'SELECT id, file_hash, mtime, size, embedding_model FROM rag_documents WHERE path = ?'
     )
     .get(filePath) as
-    | { id: string; file_hash: string; mtime: number; size: number }
+    | {
+        id: string
+        file_hash: string
+        mtime: number
+        size: number
+        embedding_model: string
+      }
     | undefined
 
   const docId = existing?.id || randomUUID()
@@ -825,6 +870,7 @@ async function upsertDocument(
     token_count: number
     page: number | null
     section: string | null
+    embedding_model: string
     created_at: string
   }[] = []
 
@@ -858,18 +904,36 @@ async function upsertDocument(
         if (existing) {
           currentDb
             .prepare(
-              'UPDATE rag_documents SET file_hash = ?, mtime = ?, size = ?, title = ?, updated_at = ? WHERE id = ?'
+              'UPDATE rag_documents SET file_hash = ?, mtime = ?, size = ?, title = ?, embedding_model = ?, updated_at = ? WHERE id = ?'
             )
-            .run(hash, mtime, size, parsed.title, now, docId)
+            .run(
+              hash,
+              mtime,
+              size,
+              parsed.title,
+              RAG_EMBEDDING_MODEL,
+              now,
+              docId
+            )
           currentDb
             .prepare('DELETE FROM rag_chunks WHERE doc_id = ?')
             .run(docId)
         } else {
           currentDb
             .prepare(
-              'INSERT INTO rag_documents (id, path, file_hash, mtime, size, title, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+              'INSERT INTO rag_documents (id, path, file_hash, mtime, size, title, embedding_model, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
             )
-            .run(docId, filePath, hash, mtime, size, parsed.title, now, now)
+            .run(
+              docId,
+              filePath,
+              hash,
+              mtime,
+              size,
+              parsed.title,
+              RAG_EMBEDDING_MODEL,
+              now,
+              now
+            )
         }
       })()
     } catch (error) {
@@ -902,12 +966,13 @@ async function upsertDocument(
       token_count: chunks[i].tokenCount,
       page: chunks[i].page ?? null,
       section: chunks[i].heading || null,
+      embedding_model: RAG_EMBEDDING_MODEL,
       created_at: createdAt,
     })
   }
 
   const insert = currentDb.prepare(
-    'INSERT INTO rag_chunks (id, doc_id, chunk_index, text, embedding_local, token_count, page, section, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+    'INSERT INTO rag_chunks (id, doc_id, chunk_index, text, embedding_local, embedding_model, token_count, page, section, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
   )
 
   try {
@@ -915,16 +980,26 @@ async function upsertDocument(
       if (existing) {
         currentDb
           .prepare(
-            'UPDATE rag_documents SET file_hash = ?, mtime = ?, size = ?, title = ?, updated_at = ? WHERE id = ?'
+            'UPDATE rag_documents SET file_hash = ?, mtime = ?, size = ?, title = ?, embedding_model = ?, updated_at = ? WHERE id = ?'
           )
-          .run(hash, mtime, size, parsed.title, now, docId)
+          .run(hash, mtime, size, parsed.title, RAG_EMBEDDING_MODEL, now, docId)
         currentDb.prepare('DELETE FROM rag_chunks WHERE doc_id = ?').run(docId)
       } else {
         currentDb
           .prepare(
-            'INSERT INTO rag_documents (id, path, file_hash, mtime, size, title, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+            'INSERT INTO rag_documents (id, path, file_hash, mtime, size, title, embedding_model, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
           )
-          .run(docId, filePath, hash, mtime, size, parsed.title, now, now)
+          .run(
+            docId,
+            filePath,
+            hash,
+            mtime,
+            size,
+            parsed.title,
+            RAG_EMBEDDING_MODEL,
+            now,
+            now
+          )
       }
       for (const row of chunkRows) {
         insert.run(
@@ -933,6 +1008,7 @@ async function upsertDocument(
           row.chunk_index,
           row.text,
           row.embedding_local,
+          row.embedding_model,
           row.token_count,
           row.page,
           row.section,
@@ -1040,9 +1116,9 @@ async function rebuildIndexFromDb(): Promise<void> {
 
   const rows = currentDb
     .prepare(
-      'SELECT id, embedding_local as embedding FROM rag_chunks ORDER BY id'
+      'SELECT id, embedding_local as embedding FROM rag_chunks WHERE embedding_model = ? ORDER BY id'
     )
-    .all() as { id: string; embedding: Buffer }[]
+    .all(RAG_EMBEDDING_MODEL) as { id: string; embedding: Buffer }[]
 
   hnswIndex.initIndex(Math.max(MAX_ELEMENTS_HNSW, rows.length + 1000))
   labelToChunkId.clear()
@@ -1059,8 +1135,8 @@ async function rebuildIndexFromDb(): Promise<void> {
 function loadLabelMappingFromDb(): void {
   const currentDb = ensureDb()
   const rows = currentDb
-    .prepare('SELECT id FROM rag_chunks ORDER BY id')
-    .all() as { id: string }[]
+    .prepare('SELECT id FROM rag_chunks WHERE embedding_model = ? ORDER BY id')
+    .all(RAG_EMBEDDING_MODEL) as { id: string }[]
   labelToChunkId.clear()
   rows.forEach((row, idx) => {
     labelToChunkId.set(idx, row.id)
@@ -1166,17 +1242,23 @@ export async function indexPaths(
       const fileHash = await hashBuffer(buffer)
       const existing = ensureDb()
         .prepare(
-          'SELECT file_hash, mtime, size FROM rag_documents WHERE path = ?'
+          'SELECT file_hash, mtime, size, embedding_model FROM rag_documents WHERE path = ?'
         )
         .get(filePath) as
-        | { file_hash: string; mtime: number; size: number }
+        | {
+            file_hash: string
+            mtime: number
+            size: number
+            embedding_model: string
+          }
         | undefined
 
       if (
         existing &&
         existing.file_hash === fileHash &&
         existing.mtime === stat.mtimeMs &&
-        existing.size === stat.size
+        existing.size === stat.size &&
+        existing.embedding_model === RAG_EMBEDDING_MODEL
       ) {
         skipped += 1
         continue
@@ -1261,10 +1343,51 @@ function keywordSearch(
     'the',
     'was',
     'were',
+    'как',
+    'где',
+    'когда',
+    'который',
+    'которая',
+    'которые',
+    'это',
+    'эта',
+    'этот',
+    'эти',
+    'что',
+    'чтобы',
+    'так',
+    'также',
+    'для',
+    'или',
+    'если',
+    'из',
+    'в',
+    'во',
+    'на',
+    'с',
+    'со',
+    'по',
+    'к',
+    'у',
+    'о',
+    'об',
+    'и',
+    'а',
+    'но',
+    'не',
+    'ни',
+    'мы',
+    'вы',
+    'я',
+    'ты',
+    'он',
+    'она',
+    'они',
   ])
   const tokens = queryText
+    .normalize('NFKC')
     .toLowerCase()
-    .split(/[^a-z0-9]+/)
+    .split(/[^\p{L}\p{N}]+/u)
     .filter(token => token.length >= 3 && !stopwords.has(token))
 
   if (tokens.length === 0) return []

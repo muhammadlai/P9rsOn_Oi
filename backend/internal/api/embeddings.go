@@ -3,13 +3,15 @@ package api
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 
 	"github.com/gorilla/mux"
 )
 
 // EmbeddingRequest represents a single embedding request
 type EmbeddingRequest struct {
-	Text string `json:"text"`
+	Text      string `json:"text"`
+	InputType string `json:"input_type,omitempty"`
 }
 
 // EmbeddingResponse represents a single embedding response
@@ -20,7 +22,20 @@ type EmbeddingResponse struct {
 
 // BatchEmbeddingRequest represents a batch embedding request
 type BatchEmbeddingRequest struct {
-	Texts []string `json:"texts"`
+	Texts     []string `json:"texts"`
+	InputType string   `json:"input_type,omitempty"`
+}
+
+func prefixEmbeddingText(text, inputType string) string {
+	if strings.HasPrefix(text, "query: ") || strings.HasPrefix(text, "passage: ") {
+		return text
+	}
+	if inputType == "query" {
+		return "query: " + text
+	}
+	// E5 is trained with passage prefixes for stored/indexed content. Keep
+	// this as the compatibility default for older API clients.
+	return "passage: " + text
 }
 
 // BatchEmbeddingResponse represents a batch embedding response
@@ -76,7 +91,10 @@ func (h *Handler) GenerateEmbedding(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	embedding, err := embeddingService.GenerateEmbedding(r.Context(), req.Text)
+	embedding, err := embeddingService.GenerateEmbedding(
+		r.Context(),
+		prefixEmbeddingText(req.Text, strings.ToLower(strings.TrimSpace(req.InputType))),
+	)
 	if err != nil {
 		h.writeError(w, http.StatusInternalServerError, "Embedding generation failed: "+err.Error())
 		return
@@ -112,7 +130,12 @@ func (h *Handler) GenerateEmbeddings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	embeddings, err := embeddingService.GenerateEmbeddings(r.Context(), req.Texts)
+	inputType := strings.ToLower(strings.TrimSpace(req.InputType))
+	prefixedTexts := make([]string, len(req.Texts))
+	for i, text := range req.Texts {
+		prefixedTexts[i] = prefixEmbeddingText(text, inputType)
+	}
+	embeddings, err := embeddingService.GenerateEmbeddings(r.Context(), prefixedTexts)
 	if err != nil {
 		h.writeError(w, http.StatusInternalServerError, "Batch embedding generation failed: "+err.Error())
 		return

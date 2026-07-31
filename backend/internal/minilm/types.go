@@ -7,8 +7,11 @@ import (
 
 // Config holds embeddings configuration
 type Config struct {
-	ModelPath string
-	Dimension int
+	ModelPath     string
+	TokenizerPath string
+	Dimension     int
+	ModelName     string
+	MaxLen        int
 }
 
 // ServiceInfo contains information about the embeddings service

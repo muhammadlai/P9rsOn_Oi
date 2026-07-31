@@ -137,7 +137,7 @@ Follow the [Setup Instructions](https://github.com/pmbstyle/Alice/blob/main/docs
 * **Local storage**: [better-sqlite3](https://github.com/WiseLibs/better-sqlite3)
 * **Voice activity detection:** [VAD (Web)](https://github.com/ricky0123/vad)
 * **Local STT & TTS:** [whisper.cpp](https://huggingface.co/ggerganov/whisper.cpp) & [Piper](https://github.com/rhasspy/piper)
-* **Local Embeddings:** [all-MiniLM-L6-v2](https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2)
+* **Local Embeddings:** [multilingual-e5-small](https://huggingface.co/intfloat/multilingual-e5-small) (ONNX, 384 dimensions)
 * **Animation:** [Kling Pro](https://fal.ai/)
 
 Other tools:
@@ -162,10 +162,13 @@ $ npm install
 Follow [setup instructions](https://github.com/pmbstyle/Alice/blob/main/docs/setupInstructions.md) to obtain required API credentials.
 
 ```bash
-# 4. Compile backend
+# 4. Download ONNX Runtime and the pinned multi-lang Memory/RAG model
+npm run setup:embeddings
+
+# 5. Compile backend
 npm run build:go
 
-# 5. Run dev environment
+# 6. Run dev environment
 $ npm run dev
 ```
 

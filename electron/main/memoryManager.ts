@@ -3,7 +3,7 @@ import { getDBInstance } from './thoughtVectorStore'
 import type { MemoryRecord } from './thoughtVectorStore'
 
 const OPENAI_VECTOR_DIMENSION = 1536
-const LOCAL_VECTOR_DIMENSION = 384
+const LOCAL_VECTOR_DIMENSION = 384 // multilingual-e5-small embedding dimension
 
 function cosineSimilarity(vecA: number[], vecB: number[]): number {
   if (!vecA || !vecB || vecA.length !== vecB.length || vecA.length === 0) {
@@ -82,6 +82,71 @@ function getProviderForEmbedding(
   return null
 }
 
+function tokenizeMemoryQuery(queryText: string): string[] {
+  const stopwords = new Set([
+    'как',
+    'где',
+    'когда',
+    'что',
+    'это',
+    'для',
+    'или',
+    'если',
+    'и',
+    'в',
+    'на',
+    'с',
+    'по',
+    'из',
+    'the',
+    'and',
+    'for',
+    'with',
+  ])
+  return Array.from(
+    new Set(
+      queryText
+        .normalize('NFKC')
+        .toLowerCase()
+        .split(/[^\p{L}\p{N}]+/u)
+        .filter(token => token.length >= 2 && !stopwords.has(token))
+    )
+  ).slice(0, 8)
+}
+
+function findMemoriesByKeywords(
+  db: any,
+  queryText: string,
+  limit: number,
+  memoryType?: string
+): Partial<MemoryRecord>[] {
+  const tokens = tokenizeMemoryQuery(queryText)
+  if (tokens.length === 0) return []
+
+  const clauses = tokens.map(() => 'content LIKE ?')
+  const params: any[] = tokens.map(token => `%${token}%`)
+  let sql = `SELECT id, content, memory_type, created_at FROM long_term_memories WHERE (${clauses.join(' OR ')})`
+  if (memoryType) {
+    sql += ' AND memory_type = ?'
+    params.push(memoryType)
+  }
+  sql += ' ORDER BY created_at DESC LIMIT ?'
+  params.push(limit)
+
+  const rows = db.prepare(sql).all(...params) as {
+    id: string
+    content: string
+    memory_type: string
+    created_at: string
+  }[]
+  return rows.map(row => ({
+    id: row.id,
+    content: row.content,
+    memoryType: row.memory_type,
+    createdAt: row.created_at,
+  }))
+}
+
 export async function saveMemoryLocal(
   content: string,
   memoryType: string = 'general',
@@ -131,7 +196,8 @@ export async function saveMemoryLocal(
 export async function getRecentMemoriesLocal(
   limit: number = 20,
   memoryType?: string,
-  queryEmbedding?: number[]
+  queryEmbedding?: number[],
+  queryText?: string
 ): Promise<Partial<MemoryRecord>[]> {
   const db = getDBInstance()
   let memoriesToReturn: Partial<MemoryRecord>[] = []
@@ -183,6 +249,12 @@ export async function getRecentMemoriesLocal(
         ) as MemoryRecord[]
 
       if (memoriesWithEmbeddings.length === 0) {
+        const keywordMatches = queryText
+          ? findMemoriesByKeywords(db, queryText, limit, memoryType)
+          : []
+        if (keywordMatches.length > 0) {
+          return keywordMatches
+        }
         console.warn(
           '[MemoryManager] Semantic query provided, but no memories with embeddings found. Falling back to recent general memories.'
         )
@@ -228,6 +300,12 @@ export async function getRecentMemoriesLocal(
       scoredMemories.sort((a, b) => b.score - a.score)
       memoriesToReturn = scoredMemories.slice(0, limit).map(sm => sm.memory)
     } else {
+      const keywordMatches = queryText
+        ? findMemoriesByKeywords(db, queryText, limit, memoryType)
+        : []
+      if (keywordMatches.length > 0) {
+        return keywordMatches
+      }
       let sql =
         'SELECT id, content, memory_type, created_at FROM long_term_memories'
       const params: any[] = []

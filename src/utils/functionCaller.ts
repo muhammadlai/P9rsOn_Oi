@@ -187,6 +187,7 @@ async function recall_memories(args: GetRecentMemoriesArgs) {
       limit: 20,
       memoryType: args.memoryType,
       queryEmbedding: queryEmbedding,
+      queryText: args.query,
     })
 
     if (result.success) {

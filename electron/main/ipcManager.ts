@@ -380,13 +380,20 @@ export function registerIPCHandlers(): void {
         limit,
         memoryType,
         queryEmbedding,
-      }: { limit?: number; memoryType?: string; queryEmbedding?: number[] }
+        queryText,
+      }: {
+        limit?: number
+        memoryType?: string
+        queryEmbedding?: number[]
+        queryText?: string
+      }
     ) => {
       try {
         const memories = await getRecentMemoriesLocal(
           limit,
           memoryType,
-          queryEmbedding
+          queryEmbedding,
+          queryText
         )
         return { success: true, data: memories }
       } catch (error) {
