@@ -229,9 +229,9 @@ const closeWindow = () => {
 }
 
 const openSettingsWindow = async () => {
-  if (window.ipcRenderer) {
+  if (window.aliceIPC) {
     try {
-      await window.ipcRenderer.invoke('settings-window:open')
+      await window.aliceIPC.invoke('settings-window:open')
     } catch (error) {
       console.error('Failed to open settings window:', error)
     }

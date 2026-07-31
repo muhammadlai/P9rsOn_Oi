@@ -1088,7 +1088,7 @@ onUnmounted(() => {
 
 const refreshRagStats = async () => {
   try {
-    const result = await window.ipcRenderer.invoke('rag:stats')
+    const result = await window.aliceIPC.invoke('rag:stats')
     if (result.success && result.data) {
       ragStats.value = result.data
     }
@@ -1099,7 +1099,7 @@ const refreshRagStats = async () => {
 
 const selectRagPaths = async () => {
   try {
-    const result = await window.ipcRenderer.invoke('rag:select-paths')
+    const result = await window.aliceIPC.invoke('rag:select-paths')
     if (!result.success || !Array.isArray(result.data)) {
       return
     }
@@ -1119,7 +1119,7 @@ const indexRagPaths = async (paths: string[]) => {
   isIndexingRag.value = true
   ragStatusMessage.value = 'Indexing...'
   try {
-    const result = await window.ipcRenderer.invoke('rag:index-paths', {
+    const result = await window.aliceIPC.invoke('rag:index-paths', {
       paths: normalizedPaths,
       recursive: true,
     })
@@ -1144,7 +1144,7 @@ const clearRagIndex = async () => {
   isIndexingRag.value = true
   ragStatusMessage.value = 'Clearing index...'
   try {
-    await window.ipcRenderer.invoke('rag:clear')
+    await window.aliceIPC.invoke('rag:clear')
     ragStatusMessage.value = 'Index cleared'
   } catch (error) {
     ragStatusMessage.value = 'Failed to clear index'
@@ -1166,7 +1166,7 @@ const removeRagDocuments = async (pathItem: string) => {
   isIndexingRag.value = true
   ragStatusMessage.value = 'Removing documents...'
   try {
-    const result = await window.ipcRenderer.invoke('rag:remove-paths', {
+    const result = await window.aliceIPC.invoke('rag:remove-paths', {
       paths: [pathItem],
     })
     if (result.success && result.data) {

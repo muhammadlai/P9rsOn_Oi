@@ -512,11 +512,11 @@ const handleSaveAndTestSettings = async () => {
 
   await settingsStore.saveAndTestSettings()
 
-  if (window.ipcRenderer && window.location.hash === '#settings') {
+  if (window.aliceIPC && window.location.hash === '#settings') {
     try {
       const success = !settingsStore.error && settingsStore.successMessage
 
-      await window.ipcRenderer.invoke('settings:notify-main-window', {
+      await window.aliceIPC.invoke('settings:notify-main-window', {
         type: 'settings-saved',
         success: success,
         validationComplete: true,

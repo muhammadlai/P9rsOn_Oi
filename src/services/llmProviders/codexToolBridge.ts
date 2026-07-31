@@ -49,20 +49,20 @@ function createToolResult(
 async function respondToCodexToolCall(
   result: CodexToolExecuteResult
 ): Promise<void> {
-  await window.ipcRenderer.invoke('codex-tool:result', result)
+  await window.aliceIPC.invoke('codex-tool:result', result)
 }
 
 export function registerCodexToolBridge(): void {
   if (
     codexToolBridgeRegistered ||
     typeof window === 'undefined' ||
-    !window.ipcRenderer
+    !window.aliceIPC
   ) {
     return
   }
 
   codexToolBridgeRegistered = true
-  window.ipcRenderer.on(
+  window.aliceIPC.on(
     'codex-tool:execute',
     async (_event, request: CodexToolExecuteRequest) => {
       const requestId = request?.requestId

@@ -15,7 +15,7 @@ export async function manage_clipboard(
   console.log(`Invoking clipboard action: ${args.action}`)
 
   try {
-    if (typeof window === 'undefined' || !window.ipcRenderer?.invoke) {
+    if (typeof window === 'undefined' || !window.aliceIPC?.invoke) {
       return {
         success: false,
         error:
@@ -40,7 +40,7 @@ export async function manage_clipboard(
       }
     }
 
-    const result = await window.ipcRenderer.invoke(
+    const result = await window.aliceIPC.invoke(
       'electron:manage-clipboard',
       args
     )

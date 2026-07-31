@@ -694,7 +694,7 @@ export const indexMessageForThoughts = async (
     textContentForMetadata = message.content
   }
 
-  await window.ipcRenderer.invoke('thoughtVector:add', {
+  await window.aliceIPC.invoke('thoughtVector:add', {
     conversationId,
     role,
     textContent: textContentForMetadata,
@@ -717,7 +717,7 @@ export const retrieveRelevantThoughtsForPrompt = async (
   const queryEmbedding = await createEmbedding(content)
   if (queryEmbedding.length === 0) return []
 
-  const ipcResult = await window.ipcRenderer.invoke('thoughtVector:search', {
+  const ipcResult = await window.aliceIPC.invoke('thoughtVector:search', {
     queryEmbedding,
     topK,
   })
@@ -735,7 +735,7 @@ export const retrieveRelevantDocumentsForPrompt = async (
 
   const queryEmbedding = await createLocalEmbedding(content)
 
-  const ipcResult = await window.ipcRenderer.invoke('rag:search', {
+  const ipcResult = await window.aliceIPC.invoke('rag:search', {
     queryEmbedding,
     queryText: content,
     topK,

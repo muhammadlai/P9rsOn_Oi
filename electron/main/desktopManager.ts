@@ -1,6 +1,5 @@
-import { ipcMain } from 'electron'
+import { BrowserWindow, dialog, ipcMain } from 'electron'
 import fs from 'fs/promises'
-import path from 'path'
 import { exec } from 'child_process'
 
 class DesktopManager {
@@ -29,10 +28,6 @@ class DesktopManager {
     if (ipcMain.listenerCount('desktop:executeCommand') > 0) {
       ipcMain.removeAllListeners('desktop:executeCommand')
     }
-    if (ipcMain.listenerCount('desktop:requestCommandApproval') > 0) {
-      ipcMain.removeAllListeners('desktop:requestCommandApproval')
-    }
-
     ipcMain.handle('desktop:listDirectory', async (event, dirPath) => {
       try {
         const files = await fs.readdir(dirPath)
@@ -42,25 +37,59 @@ class DesktopManager {
       }
     })
 
-    ipcMain.handle('desktop:executeCommand', async (event, command) => {
-      return new Promise(resolve => {
-        exec(command, (error, stdout, stderr) => {
-          if (error) {
-            resolve({ success: false, error: error.message })
-            return
-          }
-          if (stderr) {
-            resolve({ success: false, error: stderr })
-            return
-          }
-          resolve({ success: true, output: stdout })
-        })
-      })
-    })
+    ipcMain.handle(
+      'desktop:executeCommand',
+      async (event, command: unknown) => {
+        if (typeof command !== 'string' || command.trim().length === 0) {
+          return { success: false, error: 'A command is required.' }
+        }
 
-    ipcMain.handle('desktop:requestCommandApproval', async (event, command) => {
-      return { needsApproval: true, command }
-    })
+        if (command.length > 16_000) {
+          return { success: false, error: 'Command is too long.' }
+        }
+
+        const owner = BrowserWindow.fromWebContents(event.sender)
+        const confirmation = owner
+          ? await dialog.showMessageBox(owner, {
+              type: 'warning',
+              buttons: ['Cancel', 'Run once'],
+              defaultId: 0,
+              cancelId: 0,
+              noLink: true,
+              title: 'Allow command execution?',
+              message: 'Alice wants to execute a command on this computer.',
+              detail: command,
+            })
+          : await dialog.showMessageBox({
+              type: 'warning',
+              buttons: ['Cancel', 'Run once'],
+              defaultId: 0,
+              cancelId: 0,
+              noLink: true,
+              title: 'Allow command execution?',
+              message: 'Alice wants to execute a command on this computer.',
+              detail: command,
+            })
+
+        if (confirmation.response !== 1) {
+          return { success: false, error: 'Command execution denied by user.' }
+        }
+
+        return new Promise(resolve => {
+          exec(command, (error, stdout, stderr) => {
+            if (error) {
+              resolve({ success: false, error: error.message })
+              return
+            }
+            if (stderr) {
+              resolve({ success: false, error: stderr })
+              return
+            }
+            resolve({ success: true, output: stdout })
+          })
+        })
+      }
+    )
   }
 }
 

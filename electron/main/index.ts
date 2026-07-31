@@ -1,7 +1,6 @@
 // Fix for hybrid graphics systems (NVIDIA + AMD): Disable GPU before any Electron initialization
 // This prevents GPU process crashes on systems with multiple graphics cards
 process.env.ELECTRON_DISABLE_GPU = '1'
-process.env.ELECTRON_NO_SANDBOX = '1'
 process.env.LIBGL_ALWAYS_SOFTWARE = '1'
 process.env.GALLIUM_DRIVER = 'llvmpipe'
 
@@ -80,8 +79,6 @@ let managersInitialized = global.aliceAppState.managersInitialized
 let appInitialized = global.aliceAppState.appInitialized
 const initId = global.aliceAppState.initId
 
-// Prevent clustering in development
-process.env.ELECTRON_DISABLE_SECURITY_WARNINGS = 'true'
 process.env.NODE_OPTIONS = '--max-old-space-size=4096'
 
 const currentTime = Date.now()

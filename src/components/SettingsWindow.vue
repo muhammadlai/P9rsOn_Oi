@@ -30,9 +30,9 @@ import Settings from './Settings.vue'
 import { appLogo } from '../utils/assetsImport'
 
 const closeWindow = async () => {
-  if (window.ipcRenderer) {
+  if (window.aliceIPC) {
     try {
-      await window.ipcRenderer.invoke('settings-window:close')
+      await window.aliceIPC.invoke('settings-window:close')
     } catch (error) {
       console.error('Failed to close settings window:', error)
     }

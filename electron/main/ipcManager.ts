@@ -103,6 +103,7 @@ import {
 import {
   loadCustomAvatarsFromDisk,
   refreshCustomAvatars,
+  getCustomAvatarsRootPath,
 } from './customAvatarsManager'
 import {
   getAllowedHttpOrigins,
@@ -121,6 +122,14 @@ const GENERATED_IMAGES_FULL_PATH = path.join(
 let screenshotDataURL: string | null = null
 
 let ipcHandlersRegistered = false
+
+function isTrustedLocalOpenPath(targetPath: string): boolean {
+  const candidate = path.resolve(targetPath)
+  return [GENERATED_IMAGES_FULL_PATH, getCustomAvatarsRootPath()].some(root => {
+    const relative = path.relative(path.resolve(root), candidate)
+    return relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative))
+  })
+}
 
 function broadcastCustomToolsUpdate() {
   BrowserWindow.getAllWindows().forEach(window => {
@@ -1000,6 +1009,38 @@ export function registerIPCHandlers(): void {
             message: `Successfully initiated opening URL: ${targetPath}`,
           }
         } else {
+          if (!isTrustedLocalOpenPath(targetPath)) {
+            const owner = BrowserWindow.fromWebContents(event.sender)
+            const confirmation = owner
+              ? await dialog.showMessageBox(owner, {
+                  type: 'warning',
+                  buttons: ['Cancel', 'Open'],
+                  defaultId: 0,
+                  cancelId: 0,
+                  noLink: true,
+                  title: 'Allow opening a local path?',
+                  message: 'Alice wants to open a local path or application.',
+                  detail: targetPath,
+                })
+              : await dialog.showMessageBox({
+                  type: 'warning',
+                  buttons: ['Cancel', 'Open'],
+                  defaultId: 0,
+                  cancelId: 0,
+                  noLink: true,
+                  title: 'Allow opening a local path?',
+                  message: 'Alice wants to open a local path or application.',
+                  detail: targetPath,
+                })
+
+            if (confirmation.response !== 1) {
+              return {
+                success: false,
+                message: 'Opening the local path was denied by the user.',
+              }
+            }
+          }
+
           console.log(`Opening path/application: ${targetPath}`)
           const errorMessage = await shell.openPath(targetPath)
 

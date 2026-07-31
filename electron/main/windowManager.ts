@@ -64,6 +64,10 @@ export async function createMainWindow(): Promise<BrowserWindow> {
     hasShadow: false,
     webPreferences: {
       preload: getPreloadPath(),
+      sandbox: true,
+      contextIsolation: true,
+      nodeIntegration: false,
+      webSecurity: true,
       offscreen: false,
       backgroundThrottling: false,
     },
@@ -114,6 +118,10 @@ export async function createOverlayWindow(): Promise<BrowserWindow> {
     paintWhenInitiallyHidden: true,
     webPreferences: {
       preload: getPreloadPath(),
+      sandbox: true,
+      contextIsolation: true,
+      nodeIntegration: false,
+      webSecurity: true,
       offscreen: false,
       backgroundThrottling: false,
     },
@@ -222,6 +230,10 @@ export async function createSettingsWindow(): Promise<BrowserWindow> {
     show: false,
     webPreferences: {
       preload: getPreloadPath(),
+      sandbox: true,
+      contextIsolation: true,
+      nodeIntegration: false,
+      webSecurity: true,
       offscreen: false,
       backgroundThrottling: false,
     },

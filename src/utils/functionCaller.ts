@@ -120,7 +120,7 @@ async function save_memory(args: SaveMemoryArgs) {
       )
     }
 
-    const result = await window.ipcRenderer.invoke('memory:save', {
+    const result = await window.aliceIPC.invoke('memory:save', {
       content: args.content,
       memoryType: args.memoryType,
       embeddingOpenAI: generatedEmbeddingOpenAI,
@@ -142,7 +142,7 @@ async function save_memory(args: SaveMemoryArgs) {
 
 async function delete_memory(args: DeleteMemoryArgs) {
   try {
-    const result = await window.ipcRenderer.invoke('memory:delete', {
+    const result = await window.aliceIPC.invoke('memory:delete', {
       id: args.id,
     })
     if (result.success) {
@@ -183,7 +183,7 @@ async function recall_memories(args: GetRecentMemoriesArgs) {
       }
     }
 
-    const result = await window.ipcRenderer.invoke('memory:get', {
+    const result = await window.aliceIPC.invoke('memory:get', {
       limit: 20,
       memoryType: args.memoryType,
       queryEmbedding: queryEmbedding,
@@ -334,7 +334,7 @@ async function get_unread_emails(
   args: GetUnreadEmailsArgs
 ): Promise<FunctionResult> {
   try {
-    const listResult = await window.ipcRenderer.invoke(
+    const listResult = await window.aliceIPC.invoke(
       'google-gmail:list-messages',
       {
         maxResults: args.maxResults || 5,
@@ -352,7 +352,7 @@ async function get_unread_emails(
         return { success: true, data: 'No unread emails found.' }
       }
       const emailDetailsPromises = listResult.data.map((msg: any) =>
-        window.ipcRenderer.invoke('google-gmail:get-message', {
+        window.aliceIPC.invoke('google-gmail:get-message', {
           id: msg.id,
           format: 'metadata',
         })
@@ -381,7 +381,7 @@ async function search_emails(args: SearchEmailsArgs): Promise<FunctionResult> {
     return { success: false, error: 'Search query is required.' }
   }
   try {
-    const listResult = await window.ipcRenderer.invoke(
+    const listResult = await window.aliceIPC.invoke(
       'google-gmail:list-messages',
       {
         q: args.query,
@@ -400,7 +400,7 @@ async function search_emails(args: SearchEmailsArgs): Promise<FunctionResult> {
         }
       }
       const emailDetailsPromises = listResult.data.map((msg: any) =>
-        window.ipcRenderer.invoke('google-gmail:get-message', {
+        window.aliceIPC.invoke('google-gmail:get-message', {
           id: msg.id,
           format: 'metadata',
         })
@@ -436,7 +436,7 @@ async function get_email_content(
     }
   }
   try {
-    const result = await window.ipcRenderer.invoke('google-gmail:get-message', {
+    const result = await window.aliceIPC.invoke('google-gmail:get-message', {
       id: args.messageId,
       format: 'full',
     })
@@ -470,7 +470,7 @@ async function browser_context(
 
     console.log('Requesting browser context via WebSocket:', requestData)
 
-    const result = await window.ipcRenderer.invoke(
+    const result = await window.aliceIPC.invoke(
       'websocket:send-request',
       requestData
     )
