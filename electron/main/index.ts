@@ -4,7 +4,7 @@ process.env.ELECTRON_DISABLE_GPU = '1'
 process.env.LIBGL_ALWAYS_SOFTWARE = '1'
 process.env.GALLIUM_DRIVER = 'llvmpipe'
 
-import { app, session } from 'electron'
+import { app, session, BrowserWindow } from 'electron'
 
 app.disableHardwareAcceleration()
 
@@ -523,7 +523,6 @@ app.on('second-instance', (event, commandLine, workingDirectory) => {
 })
 
 app.on('activate', () => {
-  const { BrowserWindow } = require('electron')
   const allWindows = BrowserWindow.getAllWindows()
   if (allWindows.length) {
     allWindows[0].focus()

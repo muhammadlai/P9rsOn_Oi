@@ -14,23 +14,21 @@ app.use(createPinia())
 app.use(router)
 registerCodexToolBridge()
 
-async function mountApp(): Promise<void> {
+async function startApp(): Promise<void> {
   try {
     await router.isReady()
   } catch (error) {
     console.error('Router failed to finish initial navigation:', error)
   }
-  app.mount('#app')
+
+  try {
+    await initializeClients()
+    console.log('All clients initialized, mounting app')
+  } catch (error) {
+    console.error('Failed to initialize clients, mounting app anyway:', error)
+  } finally {
+    app.mount('#app')
+  }
 }
 
-// Initialize clients and then mount the app
-initializeClients()
-  .then(() => {
-    console.log('All clients initialized, mounting app')
-  })
-  .catch(error => {
-    console.error('Failed to initialize clients, mounting app anyway:', error)
-  })
-  .finally(() => {
-    mountApp()
-  })
+void startApp()

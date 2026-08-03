@@ -25,6 +25,22 @@ describe('VAD runtime packaging', () => {
 })
 
 describe('VAD initialization options', () => {
+  it('resolves relative assets from the renderer URL', () => {
+    vi.stubGlobal('window', {
+      location: { href: 'http://localhost:3344/' },
+    })
+
+    const options = createVadOptions('./', {
+      onSpeechStart: vi.fn(),
+      onSpeechEnd: vi.fn(),
+    })
+
+    expect(options.baseAssetPath).toBe('http://localhost:3344/')
+    expect(options.onnxWASMBasePath).toBe('http://localhost:3344/')
+
+    vi.unstubAllGlobals()
+  })
+
   it('uses local assets and leaves startup under application control', () => {
     const onSpeechStart = vi.fn()
     const onSpeechEnd = vi.fn()
@@ -41,6 +57,21 @@ describe('VAD initialization options', () => {
       startOnLoad: false,
       onSpeechStart,
       onSpeechEnd,
+    })
+
+    const ort = { env: { logLevel: 'warning', wasm: {} } }
+    options.ortConfig?.(ort as never)
+
+    expect(ort).toMatchObject({
+      env: {
+        logLevel: 'error',
+        wasm: {
+          wasmPaths: {
+            wasm: 'file:///app/dist/ort-wasm-simd-threaded.wasm',
+            mjs: 'file:///app/dist/ort-wasm-simd-threaded.mjs',
+          },
+        },
+      },
     })
   })
 })

@@ -1,4 +1,5 @@
 import fs from 'node:fs'
+import path from 'node:path'
 import { defineConfig, loadEnv } from 'vite'
 import tailwindcss from '@tailwindcss/vite'
 import vue from '@vitejs/plugin-vue'
@@ -17,6 +18,23 @@ export default defineConfig(({ mode, command }) => {
   const QB_BASE_URL = env.VITE_QB_URL
 
   return {
+    resolve: {
+      // vad-web imports this subpath with CommonJS `require()`. Resolve it to
+      // ORT's ESM build so Vite does not embed the CommonJS wrapper (which
+      // otherwise turns ORT's dynamic WASM import into a broken .vite URL).
+      alias: {
+        'onnxruntime-web/wasm': path.resolve(
+          process.cwd(),
+          'node_modules/onnxruntime-web/dist/ort.wasm.min.mjs'
+        ),
+      },
+    },
+    // The VAD package is CommonJS and imports the WASM entrypoint through a
+    // require() call. Force both packages through Vite's ESM pre-bundler so
+    // the renderer never evaluates that CommonJS require at runtime.
+    optimizeDeps: {
+      include: ['@ricky0123/vad-web', 'onnxruntime-web/wasm'],
+    },
     plugins: [
       vue(),
       tailwindcss(),
