@@ -64,7 +64,7 @@ export function registerCodexToolBridge(): void {
   codexToolBridgeRegistered = true
   window.aliceIPC.on(
     'codex-tool:execute',
-    async (_event, request: CodexToolExecuteRequest) => {
+    async (request: CodexToolExecuteRequest) => {
       const requestId = request?.requestId
       const toolName = request?.tool
 

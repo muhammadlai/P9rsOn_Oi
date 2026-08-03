@@ -12,6 +12,10 @@ const SECRETS_FILE_NAME = 'alice-secrets.bin'
 const settingsFilePath = path.join(app.getPath('userData'), SETTINGS_FILE_NAME)
 const secretsFilePath = path.join(app.getPath('userData'), SECRETS_FILE_NAME)
 
+// A failed protected-storage read must never be treated as an empty secret
+// set: the next renderer save would otherwise overwrite the existing blob.
+let protectedSecretsLoadFailed = false
+
 export interface AppSettings {
   VITE_OPENAI_API_KEY?: string
   VITE_OPENAI_ORGANIZATION?: string
@@ -100,9 +104,20 @@ export async function saveSettings(settings: AppSettings): Promise<void> {
     const secretValues = secrets as Record<string, unknown>
 
     if (hasSecretValues(secrets)) {
+      if (protectedSecretsLoadFailed) {
+        throw new Error(
+          'Protected secret storage is unavailable. Unlock the system keychain before changing credentials.'
+        )
+      }
       await saveEncryptedSecrets(secretValues)
     } else if (await fileExists(secretsFilePath)) {
-      await saveEncryptedSecrets({})
+      if (protectedSecretsLoadFailed) {
+        console.warn(
+          '[Settings Security] Preserving protected secrets because the previous load failed.'
+        )
+      } else {
+        await saveEncryptedSecrets({})
+      }
     }
 
     await writePrivateFile(
@@ -124,10 +139,15 @@ export async function loadSettings(): Promise<AppSettings | null> {
     const settings = JSON.parse(jsonData) as Record<string, unknown>
     const splitSettings = splitSecretSettings(settings)
     let secrets: Record<string, unknown> = {}
+    let protectedSecretsFileExists = false
 
     try {
-      if (await fileExists(secretsFilePath)) {
+      protectedSecretsFileExists = await fileExists(secretsFilePath)
+      if (protectedSecretsFileExists) {
         secrets = await loadEncryptedSecrets()
+        protectedSecretsLoadFailed = false
+      } else {
+        protectedSecretsLoadFailed = false
       }
 
       if (splitSettings.hadSecretFields) {
@@ -151,11 +171,15 @@ export async function loadSettings(): Promise<AppSettings | null> {
       }
     } catch (error) {
       if (hasSecretValues(splitSettings.secrets)) {
+        protectedSecretsLoadFailed = true
         console.warn(
           '[Settings Security] Protected storage is unavailable; retaining legacy secrets in memory until migration can complete.',
           error
         )
         return settings as AppSettings
+      }
+      if (protectedSecretsFileExists) {
+        protectedSecretsLoadFailed = true
       }
       throw error
     }
@@ -181,6 +205,7 @@ export async function deleteSettingsFile(): Promise<void> {
       fs.rm(settingsFilePath, { force: true }),
       fs.rm(secretsFilePath, { force: true }),
     ])
+    protectedSecretsLoadFailed = false
     console.log('Settings and protected secrets deleted.')
   } catch (error) {
     console.warn(
@@ -217,6 +242,7 @@ async function saveEncryptedSecrets(
   requireProtectedStorage()
   const encrypted = safeStorage.encryptString(JSON.stringify(secrets))
   await writePrivateFile(secretsFilePath, encrypted)
+  protectedSecretsLoadFailed = false
 }
 
 async function loadEncryptedSecrets(): Promise<Record<string, unknown>> {

@@ -10,6 +10,7 @@ app.disableHardwareAcceleration()
 
 import {
   initializeThoughtVectorStore,
+  reindexMultilingualLocalEmbeddings,
   ensureSaveOnQuit as ensureThoughtStoreSave,
 } from './thoughtVectorStore'
 import { reindexRagIfNeeded } from './ragDocumentStore'
@@ -438,24 +439,39 @@ app.whenReady().then(async () => {
     const backendStarted = await backendManager.start()
     if (backendStarted) {
       console.log('[Main App Ready] Go AI backend started successfully')
-      if (initialSettings?.ragEnabled && initialSettings.ragPaths?.length) {
-        void reindexRagIfNeeded(initialSettings.ragPaths, {
-          recursive: true,
-        })
-          .then(result => {
+      void (async () => {
+        try {
+          const result = await reindexMultilingualLocalEmbeddings()
+          if (result.required) {
+            console.log(
+              `[Main App Ready] Automatic multi-lang Memory migration finished: indexed ${result.indexed}.`
+            )
+          }
+        } catch (error) {
+          console.warn(
+            '[Main App Ready] Automatic multi-lang Memory migration will retry on the next launch:',
+            error
+          )
+        }
+
+        if (initialSettings?.ragEnabled && initialSettings.ragPaths?.length) {
+          try {
+            const result = await reindexRagIfNeeded(initialSettings.ragPaths, {
+              recursive: true,
+            })
             if (result.required) {
               console.log(
                 `[Main App Ready] Automatic RAG migration finished: indexed ${result.indexed}, skipped ${result.skipped}.`
               )
             }
-          })
-          .catch(error => {
+          } catch (error) {
             console.warn(
               '[Main App Ready] Automatic RAG migration will retry on the next launch:',
               error
             )
-          })
-      }
+          }
+        }
+      })()
     } else {
       console.error('[Main App Ready] Failed to start Go AI backend')
     }

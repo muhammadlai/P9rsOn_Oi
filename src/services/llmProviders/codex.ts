@@ -432,7 +432,7 @@ async function* streamViaCodexAppServer(
     })
   }
 
-  const listener = (_event: any, event: CodexStreamQueueEvent) => {
+  const listener = (event: CodexStreamQueueEvent) => {
     pushEvent(event)
   }
 

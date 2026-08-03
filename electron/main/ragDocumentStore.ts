@@ -56,8 +56,7 @@ let hnswIndex: HierarchicalNSWIndex | null = null
 let isStoreInitialized = false
 let labelToChunkId: Map<number, string> = new Map()
 let hasRecoveredFromCorruption = false
-let indexPathsPromise: Promise<{ indexed: number; skipped: number }> | null =
-  null
+let indexPathsQueue: Promise<void> = Promise.resolve()
 
 export interface RagSearchResult {
   id: string
@@ -1321,16 +1320,12 @@ export async function indexPaths(
   paths: string[],
   options?: { recursive?: boolean }
 ): Promise<{ indexed: number; skipped: number }> {
-  if (indexPathsPromise) {
-    return indexPathsPromise
-  }
-
-  indexPathsPromise = indexPathsInternal(paths, options)
-  try {
-    return await indexPathsPromise
-  } finally {
-    indexPathsPromise = null
-  }
+  const queuedRun = indexPathsQueue.then(() => indexPathsInternal(paths, options))
+  indexPathsQueue = queuedRun.then(
+    () => undefined,
+    () => undefined
+  )
+  return queuedRun
 }
 
 async function countLegacyEmbeddings(): Promise<number> {

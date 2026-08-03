@@ -71,13 +71,13 @@ declare global {
 interface AliceIPC {
   on: (
     channel: string,
-    listener: (event: any, ...args: any[]) => void
-  ) => any
+    listener: (...args: any[]) => void
+  ) => void
   off: (
     channel: string,
-    listener: (event: any, ...args: any[]) => void
-  ) => any
-  removeAllListeners: (channel: string) => any
+    listener: (...args: any[]) => void
+  ) => void
+  removeAllListeners: (channel: string) => void
   send: (channel: string, ...args: any[]) => void
   invoke: (channel: string, ...args: any[]) => Promise<any>
 }

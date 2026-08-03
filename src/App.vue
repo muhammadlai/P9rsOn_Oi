@@ -92,16 +92,16 @@ onMounted(async () => {
   await settingsStore.loadSettings()
 
   if (window.aliceIPC) {
-    window.aliceIPC.on('update-downloaded', (event, info) => {
+    window.aliceIPC.on('update-downloaded', info => {
       updateInfo.value = info
       updateAvailable.value = true
     })
 
-    window.aliceIPC.on('context-action', (event, data) => {
+    window.aliceIPC.on('context-action', data => {
       handleContextAction(data)
     })
 
-    window.aliceIPC.on('settings-changed', async (event, data) => {
+    window.aliceIPC.on('settings-changed', async data => {
       if (data.type === 'settings-saved' && data.success && data.validationComplete) {
         try {
           generalStore.statusMessage = 'Applying new settings...'

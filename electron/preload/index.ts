@@ -1,11 +1,17 @@
-import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
+import { contextBridge, ipcRenderer } from 'electron'
 import {
   isAllowedEventChannel,
   isAllowedInvokeChannel,
   isAllowedSendChannel,
 } from './ipcBridgePolicy'
 
-type IpcListener = (event: IpcRendererEvent, ...args: any[]) => void
+type IpcListener = (...args: any[]) => void
+type IpcListenerWrapper = (...args: any[]) => void
+
+const listenerWrappers = new Map<
+  string,
+  Map<IpcListener, IpcListenerWrapper[]>
+>()
 
 function assertAllowedChannel(
   channel: string,
@@ -17,18 +23,61 @@ function assertAllowedChannel(
   }
 }
 
+function rememberListenerWrapper(
+  channel: string,
+  listener: IpcListener,
+  wrapper: IpcListenerWrapper,
+): void {
+  let channelListeners = listenerWrappers.get(channel)
+  if (!channelListeners) {
+    channelListeners = new Map()
+    listenerWrappers.set(channel, channelListeners)
+  }
+
+  const wrappers = channelListeners.get(listener) ?? []
+  wrappers.push(wrapper)
+  channelListeners.set(listener, wrappers)
+}
+
+function forgetListenerWrapper(
+  channel: string,
+  listener: IpcListener,
+): IpcListenerWrapper | undefined {
+  const channelListeners = listenerWrappers.get(channel)
+  const wrappers = channelListeners?.get(listener)
+  const wrapper = wrappers?.pop()
+
+  if (wrappers && wrappers.length === 0) {
+    channelListeners?.delete(listener)
+  }
+  if (channelListeners && channelListeners.size === 0) {
+    listenerWrappers.delete(channel)
+  }
+
+  return wrapper
+}
+
 const aliceIPC = {
   on(channel: string, listener: IpcListener) {
     assertAllowedChannel(channel, isAllowedEventChannel, 'event')
-    return ipcRenderer.on(channel, listener)
+    if (typeof listener !== 'function') {
+      throw new TypeError('IPC event listener must be a function')
+    }
+    const wrapper: IpcListenerWrapper = (_event, ...args) => listener(...args)
+    rememberListenerWrapper(channel, listener, wrapper)
+    ipcRenderer.on(channel, wrapper)
   },
   off(channel: string, listener: IpcListener) {
     assertAllowedChannel(channel, isAllowedEventChannel, 'event')
-    return ipcRenderer.off(channel, listener)
+    const wrapper = forgetListenerWrapper(channel, listener)
+    if (wrapper) {
+      ipcRenderer.off(channel, wrapper)
+    }
   },
   removeAllListeners(channel: string) {
     assertAllowedChannel(channel, isAllowedEventChannel, 'event')
-    return ipcRenderer.removeAllListeners(channel)
+    ipcRenderer.removeAllListeners(channel)
+    listenerWrappers.delete(channel)
   },
   send(channel: string, ...args: any[]) {
     assertAllowedChannel(channel, isAllowedSendChannel, 'send')

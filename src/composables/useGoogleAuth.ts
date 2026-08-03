@@ -81,14 +81,14 @@ export function useGoogleAuth() {
     }
   }
 
-  function handleGoogleAuthSuccess(event: any, message: string) {
+  function handleGoogleAuthSuccess(message: string) {
     googleAuthStatus.isAuthenticated = true
     googleAuthStatus.authInProgress = false
     googleAuthStatus.message = message
     googleAuthStatus.error = null
   }
 
-  function handleGoogleAuthError(event: any, errorMsg: string) {
+  function handleGoogleAuthError(errorMsg: string) {
     googleAuthStatus.isAuthenticated = false
     googleAuthStatus.authInProgress = false
     googleAuthStatus.error = `Authentication failed: ${errorMsg}`

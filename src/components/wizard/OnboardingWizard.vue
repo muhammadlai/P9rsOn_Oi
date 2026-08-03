@@ -546,7 +546,7 @@ const testCodexAuth = async () => {
   }
 }
 
-function handleCodexStatus(event: any, status: any) {
+function handleCodexStatus(status: any) {
   const connected = Boolean(status?.connected)
   formData.codexAuthConnected = connected
   formData.codexAccountLabel = connected ? status.accountLabel || 'Connected' : ''
@@ -559,7 +559,7 @@ function handleCodexStatus(event: any, status: any) {
   }
 }
 
-function handleCodexLogin(event: any, payload: any) {
+function handleCodexLogin(payload: any) {
   if (payload?.success === false) {
     testResult.codex.success = false
     testResult.codex.error =

@@ -23,7 +23,7 @@ function installWindowMocks() {
 }
 
 function installStreamIpcMock(assertStartArgs?: (args: any) => void) {
-  const listeners = new Map<string, (event: any, payload: any) => void>()
+  const listeners = new Map<string, (payload: any) => void>()
   const invoke = vi
     .fn()
     .mockImplementation(async (channel: string, args: any) => {
@@ -32,24 +32,21 @@ function installStreamIpcMock(assertStartArgs?: (args: any) => void) {
         queueMicrotask(() => {
           const eventChannel = `http:stream:event:${args.requestId}`
           const listener = listeners.get(eventChannel)
-          listener?.(
-            {},
-            {
-              type: 'chunk',
-              data: {
-                id: 'chatcmpl-stream-test',
-                choices: [
-                  {
-                    delta: {
-                      content: 'hello streamed',
-                    },
-                    finish_reason: 'stop',
+          listener?.({
+            type: 'chunk',
+            data: {
+              id: 'chatcmpl-stream-test',
+              choices: [
+                {
+                  delta: {
+                    content: 'hello streamed',
                   },
-                ],
-              },
-            }
-          )
-          listener?.({}, { type: 'done' })
+                  finish_reason: 'stop',
+                },
+              ],
+            },
+          })
+          listener?.({ type: 'done' })
         })
         return { success: true }
       }

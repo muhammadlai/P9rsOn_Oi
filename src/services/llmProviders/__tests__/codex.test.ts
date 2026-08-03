@@ -164,7 +164,7 @@ describe('listCodexModels', () => {
       ])
     )
 
-    const listeners = new Map<string, (event: any, payload: any) => void>()
+    const listeners = new Map<string, (payload: any) => void>()
     const startArgs: any[] = []
     const invoke = vi
       .fn()
@@ -178,10 +178,9 @@ describe('listCodexModels', () => {
         if (channel === 'codex-response:start') {
           startArgs.push(args)
           queueMicrotask(() => {
-            listeners.get(`codex:stream:event:${args.requestId}`)?.(
-              {},
-              { type: 'done' }
-            )
+            listeners.get(`codex:stream:event:${args.requestId}`)?.({
+              type: 'done',
+            })
           })
           return { success: true }
         }
@@ -249,7 +248,7 @@ describe('listCodexModels', () => {
   })
 
   it('aggregates Codex app-server text for background responses', async () => {
-    const listeners = new Map<string, (event: any, payload: any) => void>()
+    const listeners = new Map<string, (payload: any) => void>()
     const invoke = vi
       .fn()
       .mockImplementation(async (channel: string, args: any) => {
@@ -264,27 +263,21 @@ describe('listCodexModels', () => {
             const listener = listeners.get(
               `codex:stream:event:${args.requestId}`
             )
-            listener?.(
-              {},
-              {
-                type: 'chunk',
-                data: {
-                  type: 'response.output_text.delta',
-                  delta: 'summary ',
-                },
-              }
-            )
-            listener?.(
-              {},
-              {
-                type: 'chunk',
-                data: {
-                  type: 'response.output_text.delta',
-                  delta: 'done',
-                },
-              }
-            )
-            listener?.({}, { type: 'done' })
+            listener?.({
+              type: 'chunk',
+              data: {
+                type: 'response.output_text.delta',
+                delta: 'summary ',
+              },
+            })
+            listener?.({
+              type: 'chunk',
+              data: {
+                type: 'response.output_text.delta',
+                delta: 'done',
+              },
+            })
+            listener?.({ type: 'done' })
           })
           return { success: true }
         }

@@ -371,7 +371,7 @@ export const useConversationStore = defineStore('conversation', () => {
     if (window.aliceIPC) {
       window.aliceIPC.on(
         'scheduler:reminder',
-        async (event, reminderData) => {
+        async reminderData => {
           console.log(
             '[ConversationStore] Received scheduler reminder:',
             reminderData
@@ -497,7 +497,7 @@ export const useConversationStore = defineStore('conversation', () => {
         if (!window.aliceIPC) {
           return () => {}
         }
-        const listener = (_event: any, reminderData: any) => {
+        const listener = (reminderData: any) => {
           handler(reminderData)
         }
         window.aliceIPC.on('scheduler:reminder', listener)

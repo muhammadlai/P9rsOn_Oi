@@ -67,7 +67,7 @@ export async function* streamViaMainProcess(
     })
   }
 
-  const listener = (_event: any, event: StreamQueueEvent) => {
+  const listener = (event: StreamQueueEvent) => {
     pushEvent(event)
   }
 

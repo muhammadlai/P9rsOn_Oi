@@ -2,6 +2,8 @@ import { app } from 'electron'
 import path from 'node:path'
 import fs from 'node:fs/promises'
 import { existsSync, unlinkSync } from 'node:fs'
+import axios from 'axios'
+import { backendManager } from './backendManager'
 import HnswlibNode from 'hnswlib-node'
 const { HierarchicalNSW } = HnswlibNode
 type HierarchicalNSWIndex = InstanceType<typeof HierarchicalNSW>
@@ -13,6 +15,17 @@ const OPENAI_VECTOR_DIMENSION = 1536 // OpenAI embedding dimension
 const LOCAL_VECTOR_DIMENSION = 384 // multilingual-e5-small embedding dimension (Go backend)
 const LOCAL_EMBEDDING_MODEL =
   'intfloat/multilingual-e5-small@614241f622f53c4eeff9890bdc4f31cfecc418b3'
+const LOCAL_EMBEDDING_REINDEXED_FLAG =
+  'multilingual_e5_local_embeddings_reindexed'
+const LOCAL_EMBEDDING_INVALIDATION_FLAG =
+  'multilingual_e5_local_embeddings_invalidated'
+// Versions before the automatic reindexer used this flag too early, before
+// any replacement vectors had been generated. Treat it as an invalidation
+// marker when upgrading from those versions.
+const LEGACY_LOCAL_EMBEDDING_MIGRATION_FLAG =
+  'multilingual_e5_local_embeddings'
+const LOCAL_EMBEDDING_BATCH_SIZE = 64
+const LOCAL_EMBEDDING_READY_TIMEOUT_MS = 120000
 const MAX_ELEMENTS_HNSW = 10000
 const HNSW_OPENAI_INDEX_FILE_NAME = 'alice-thoughts-hnsw-openai.index'
 const HNSW_LOCAL_INDEX_FILE_NAME = 'alice-thoughts-hnsw-local.index'
@@ -127,11 +140,33 @@ function initDB() {
 function runMultilingualLocalEmbeddingMigration() {
   if (!db) return
 
-  const flagName = 'multilingual_e5_local_embeddings'
   const migrationFlag = db
     .prepare('SELECT completed FROM migration_flags WHERE flag_name = ?')
-    .get(flagName) as { completed?: number } | undefined
+    .get(LOCAL_EMBEDDING_REINDEXED_FLAG) as
+    | { completed?: number }
+    | undefined
   if (migrationFlag?.completed) return
+
+  const invalidationFlag = db
+    .prepare('SELECT completed FROM migration_flags WHERE flag_name = ?')
+    .get(LOCAL_EMBEDDING_INVALIDATION_FLAG) as { completed?: number } | undefined
+  const legacyMigrationFlag = db
+    .prepare('SELECT completed FROM migration_flags WHERE flag_name = ?')
+    .get(LEGACY_LOCAL_EMBEDDING_MIGRATION_FLAG) as
+    | { completed?: number }
+    | undefined
+
+  // The old flag proves that invalidation already happened, but not that
+  // replacement vectors were ever generated. Preserve that state and let the
+  // new reindexer finish it instead of invalidating any partial progress.
+  if (invalidationFlag?.completed || legacyMigrationFlag?.completed) {
+    if (!invalidationFlag?.completed) {
+      db.prepare(
+        'INSERT OR REPLACE INTO migration_flags (flag_name, completed) VALUES (?, 1)'
+      ).run(LOCAL_EMBEDDING_INVALIDATION_FLAG)
+    }
+    return
+  }
 
   try {
     // all-MiniLM-L6-v2 and multilingual-e5-small both use 384 dimensions,
@@ -149,8 +184,7 @@ function runMultilingualLocalEmbeddingMigration() {
       .run().changes
     db.prepare(
       'INSERT OR REPLACE INTO migration_flags (flag_name, completed) VALUES (?, 1)'
-    ).run(flagName)
-
+    ).run(LOCAL_EMBEDDING_INVALIDATION_FLAG)
     if (existsSync(hnswLocalIndexFilePath)) {
       try {
         unlinkSync(hnswLocalIndexFilePath)
@@ -171,6 +205,137 @@ function runMultilingualLocalEmbeddingMigration() {
       '[ThoughtVectorStore Migration] Failed to invalidate legacy local embeddings:',
       error
     )
+  }
+}
+
+async function generateLocalEmbeddings(texts: string[]): Promise<number[][]> {
+  const response = await axios.post(
+    `${backendManager.getApiUrl()}/api/embeddings/generate-batch`,
+    { texts, input_type: 'passage' },
+    { timeout: 60000 }
+  )
+  if (!response.data?.success) {
+    throw new Error(
+      response.data?.error || 'Local embedding generation failed.'
+    )
+  }
+  const embeddings = response.data.data?.embeddings
+  if (!Array.isArray(embeddings) || embeddings.length !== texts.length) {
+    throw new Error('Local embedding batch size mismatch.')
+  }
+  return embeddings
+}
+
+async function waitForLocalEmbeddingsReady(): Promise<void> {
+  const deadline = Date.now() + LOCAL_EMBEDDING_READY_TIMEOUT_MS
+  while (Date.now() < deadline) {
+    try {
+      const response = await axios.get(
+        `${backendManager.getApiUrl()}/api/embeddings/ready`,
+        { timeout: 5000 }
+      )
+      if (response.data?.success && response.data?.data?.ready === true) {
+        return
+      }
+    } catch {
+      // The backend may still be downloading or initializing the model.
+    }
+    await new Promise(resolve => setTimeout(resolve, 500))
+  }
+  throw new Error(
+    'Local embeddings service did not become ready before the migration timeout.'
+  )
+}
+
+function toEmbeddingBuffer(embedding: number[]): Buffer {
+  return Buffer.from(new Float32Array(embedding).buffer)
+}
+
+async function reindexLocalRows(
+  rows: Array<{ id: string; text: string }>,
+  updateSql: string,
+  label: string
+): Promise<number> {
+  if (!db || rows.length === 0) return 0
+
+  let indexed = 0
+  for (let offset = 0; offset < rows.length; offset += LOCAL_EMBEDDING_BATCH_SIZE) {
+    const batch = rows.slice(offset, offset + LOCAL_EMBEDDING_BATCH_SIZE)
+    const embeddings = await generateLocalEmbeddings(batch.map(row => row.text))
+
+    const update = db.prepare(updateSql)
+    db.transaction(() => {
+      for (let index = 0; index < batch.length; index += 1) {
+        const embedding = embeddings[index]
+        if (!Array.isArray(embedding) || embedding.length !== LOCAL_VECTOR_DIMENSION) {
+          throw new Error(
+            `[ThoughtVectorStore Migration] Invalid ${label} embedding payload.`
+          )
+        }
+        const result = update.run(toEmbeddingBuffer(embedding), batch[index].id)
+        indexed += result.changes
+      }
+    })()
+  }
+
+  return indexed
+}
+
+export async function reindexMultilingualLocalEmbeddings(): Promise<{
+  required: boolean
+  indexed: number
+}> {
+  if (!db || !isStoreInitialized) {
+    await initializeThoughtVectorStore()
+  }
+  if (!db) throw new Error('Thought vector database is not initialized.')
+
+  const migrationFlag = db
+    .prepare('SELECT completed FROM migration_flags WHERE flag_name = ?')
+    .get(LOCAL_EMBEDDING_REINDEXED_FLAG) as
+    | { completed?: number }
+    | undefined
+  if (migrationFlag?.completed) {
+    return { required: false, indexed: 0 }
+  }
+
+  const thoughts = db
+    .prepare(
+      'SELECT thought_id as id, text_content as text FROM thoughts WHERE embedding_local IS NULL'
+    )
+    .all() as Array<{ id: string; text: string }>
+  const memories = db
+    .prepare(
+      'SELECT id, content as text FROM long_term_memories WHERE embedding_local IS NULL'
+    )
+    .all() as Array<{ id: string; text: string }>
+
+  if (thoughts.length > 0 || memories.length > 0) {
+    await waitForLocalEmbeddingsReady()
+  }
+
+  const indexedThoughts = await reindexLocalRows(
+    thoughts,
+    'UPDATE thoughts SET embedding_local = ? WHERE thought_id = ? AND embedding_local IS NULL',
+    'thought'
+  )
+  const indexedMemories = await reindexLocalRows(
+    memories,
+    'UPDATE long_term_memories SET embedding_local = ? WHERE id = ? AND embedding_local IS NULL',
+    'memory'
+  )
+
+  await rebuildHnswIndexFromDB('local')
+  db.prepare(
+    'INSERT OR REPLACE INTO migration_flags (flag_name, completed) VALUES (?, 1)'
+  ).run(LOCAL_EMBEDDING_REINDEXED_FLAG)
+
+  console.log(
+    `[ThoughtVectorStore Migration] Reindexed ${indexedThoughts} thoughts and ${indexedMemories} memories with ${LOCAL_EMBEDDING_MODEL}.`
+  )
+  return {
+    required: true,
+    indexed: indexedThoughts + indexedMemories,
   }
 }
 

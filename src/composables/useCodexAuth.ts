@@ -110,7 +110,7 @@ export function useCodexAuth() {
     }
   }
 
-  function handleCodexLoginCompleted(event: any, payload: any) {
+  function handleCodexLoginCompleted(payload: any) {
     codexAuthStatus.authInProgress = false
     if (payload?.success === false) {
       codexAuthStatus.isAuthenticated = false
@@ -125,7 +125,6 @@ export function useCodexAuth() {
   }
 
   function handleCodexStatusChanged(
-    event: any,
     payload: CodexAccountStatusPayload
   ) {
     codexAuthStatus.authInProgress = false
