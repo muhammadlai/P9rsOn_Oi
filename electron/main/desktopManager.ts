@@ -1,9 +1,11 @@
 import { BrowserWindow, dialog, ipcMain } from 'electron'
 import fs from 'fs/promises'
 import { exec } from 'child_process'
+import { isPathWithinRoot } from './securityBoundaries'
 
 class DesktopManager {
   private static instance: DesktopManager | null = null
+  private readonly approvedDirectoryRoots = new Set<string>()
 
   constructor() {
     if (DesktopManager.instance) {
@@ -30,10 +32,51 @@ class DesktopManager {
     }
     ipcMain.handle('desktop:listDirectory', async (event, dirPath) => {
       try {
-        const files = await fs.readdir(dirPath)
+        if (typeof dirPath !== 'string' || dirPath.trim().length === 0) {
+          return { success: false, error: 'A directory path is required.' }
+        }
+
+        const requestedPath = await fs.realpath(dirPath.trim())
+        const stat = await fs.stat(requestedPath)
+        if (!stat.isDirectory()) {
+          return {
+            success: false,
+            error: 'The requested path is not a directory.',
+          }
+        }
+
+        const isApproved = [...this.approvedDirectoryRoots].some(root =>
+          isPathWithinRoot(root, requestedPath)
+        )
+        if (!isApproved) {
+          const owner = BrowserWindow.fromWebContents(event.sender)
+          const options = {
+            type: 'warning' as const,
+            buttons: ['Cancel', 'Allow for session'],
+            defaultId: 0,
+            cancelId: 0,
+            noLink: true,
+            title: 'Allow directory access?',
+            message:
+              'Alice wants to read this directory and its subdirectories.',
+            detail: requestedPath,
+          }
+          const confirmation = owner
+            ? await dialog.showMessageBox(owner, options)
+            : await dialog.showMessageBox(options)
+          if (confirmation.response !== 1) {
+            return { success: false, error: 'Directory access denied by user.' }
+          }
+          this.approvedDirectoryRoots.add(requestedPath)
+        }
+
+        const files = await fs.readdir(requestedPath)
         return { success: true, files }
       } catch (error) {
-        return { success: false, error: error.message }
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : String(error),
+        }
       }
     })
 

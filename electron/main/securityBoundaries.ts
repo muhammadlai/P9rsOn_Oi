@@ -143,3 +143,17 @@ export function resolvePathWithinRoot(
 
   return resolvedPath
 }
+
+export function isPathWithinRoot(
+  rootPath: string,
+  candidatePath: string
+): boolean {
+  const relativePath = path.relative(
+    path.resolve(rootPath),
+    path.resolve(candidatePath)
+  )
+  return (
+    relativePath === '' ||
+    (!relativePath.startsWith('..') && !path.isAbsolute(relativePath))
+  )
+}

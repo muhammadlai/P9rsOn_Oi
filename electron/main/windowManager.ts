@@ -45,7 +45,11 @@ let settingsWindow: BrowserWindow | null = null
 function installNavigationGuards(window: BrowserWindow): void {
   const openExternal = (url: string) => {
     try {
-      void shell.openExternal(validateExternalOpenUrl(url))
+      void shell
+        .openExternal(validateExternalOpenUrl(url))
+        .catch(error =>
+          console.warn('[Window Security] Could not open external URL:', error)
+        )
     } catch (error) {
       console.warn('[Window Security] Blocked external URL:', url, error)
     }

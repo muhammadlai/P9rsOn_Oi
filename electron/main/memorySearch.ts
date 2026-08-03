@@ -26,7 +26,7 @@ export function tokenizeMemoryQuery(queryText: string): string[] {
     new Set(
       queryText
         .normalize('NFKC')
-        .toLocaleLowerCase()
+        .toLowerCase()
         .split(/[^\p{L}\p{N}]+/u)
         .filter(
           token => token.length >= 2 && !MEMORY_SEARCH_STOPWORDS.has(token)

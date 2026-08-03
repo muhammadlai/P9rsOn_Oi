@@ -3,6 +3,7 @@ import path from 'node:path'
 import {
   getAllowedHttpOrigins,
   getHttpOriginsRequiringApproval,
+  isPathWithinRoot,
   resolvePathWithinRoot,
   validateExternalOpenUrl,
   validateHttpBridgeUrl,
@@ -24,6 +25,15 @@ describe('security boundaries', () => {
       ).toThrow()
     }
   )
+
+  it('checks absolute paths against an approved root', () => {
+    expect(
+      isPathWithinRoot('/tmp/alice-project', '/tmp/alice-project/docs')
+    ).toBe(true)
+    expect(isPathWithinRoot('/tmp/alice-project', '/tmp/other-project')).toBe(
+      false
+    )
+  })
 
   it('allows configured provider and local service origins', () => {
     const origins = getAllowedHttpOrigins({
