@@ -63,6 +63,7 @@
   },
   "dependencies": {
     "@ricky0123/vad-web": "0.0.30",
+    "brace-expansion": "2.1.4",
     "better-sqlite3": "^12.11.1",
     "bufferutil": "^4.1.0",
     "cheerio": "^1.0.0-rc.12",
@@ -74,14 +75,28 @@
     "hnswlib-node": "^3.0.0",
     "mammoth": "^1.12.0",
     "marked": "^15.0.11",
+    "minimatch": "9.0.7",
     "node-cron": "^4.2.1",
     "path": "^0.12.7",
+    "picomatch": "4.0.4",
     "pdfjs-dist": "^5.7.284",
     "turndown": "^7.2.4",
     "vue-router": "^5.0.6",
     "ws": "^8.21.1"
   },
   "optionalDependencies": {
-    "@rollup/rollup-linux-x64-gnu": "4.52.5"
+    "@rollup/rollup-linux-x64-gnu": "4.62.4"
+  },
+  "overrides": {
+    "@xmldom/xmldom": "0.8.13",
+    "anymatch": {
+      "picomatch": "3.0.2"
+    },
+    "js-yaml": "4.3.0",
+    "jws": "4.0.1",
+    "qs": "6.15.3",
+    "rollup": "4.62.4",
+    "underscore": "1.13.8",
+    "undici": "7.29.0"
   }
 }
