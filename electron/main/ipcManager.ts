@@ -24,6 +24,19 @@ function isBrowserContextToolEnabled(settings: any): boolean {
 }
 
 const activeHttpStreams = new Map<string, AbortController>()
+let cachedAllowedHttpOrigins: Promise<Set<string>> | null = null
+
+async function getCachedAllowedHttpOrigins(): Promise<Set<string>> {
+  if (!cachedAllowedHttpOrigins) {
+    cachedAllowedHttpOrigins = loadSettings()
+      .then(settings => getAllowedHttpOrigins(settings))
+      .catch(error => {
+        cachedAllowedHttpOrigins = null
+        throw error
+      })
+  }
+  return cachedAllowedHttpOrigins
+}
 
 function sendHttpStreamEvent(
   sender: WebContents,
@@ -109,6 +122,7 @@ import {
   getAllowedHttpOrigins,
   getHttpOriginsRequiringApproval,
   resolvePathWithinRoot,
+  validateExternalOpenUrl,
   validateHttpBridgeUrl,
 } from './securityBoundaries'
 
@@ -127,7 +141,10 @@ function isTrustedLocalOpenPath(targetPath: string): boolean {
   const candidate = path.resolve(targetPath)
   return [GENERATED_IMAGES_FULL_PATH, getCustomAvatarsRootPath()].some(root => {
     const relative = path.relative(path.resolve(root), candidate)
-    return relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative))
+    return (
+      relative === '' ||
+      (!relative.startsWith('..') && !path.isAbsolute(relative))
+    )
   })
 }
 
@@ -645,7 +662,9 @@ export function registerIPCHandlers(): void {
 
   // Settings management
   ipcMain.handle('settings:load', async () => {
-    return await loadSettings()
+    const settings = await loadSettings()
+    cachedAllowedHttpOrigins = Promise.resolve(getAllowedHttpOrigins(settings))
+    return settings
   })
 
   ipcMain.handle(
@@ -689,6 +708,9 @@ export function registerIPCHandlers(): void {
         }
 
         await saveSettings(settingsToSave)
+        cachedAllowedHttpOrigins = Promise.resolve(
+          getAllowedHttpOrigins(settingsToSave)
+        )
 
         // Handle hotkey changes
         if (
@@ -1004,13 +1026,10 @@ export function registerIPCHandlers(): void {
       console.log(`Main process received request to open: ${targetPath}`)
 
       try {
-        if (
-          targetPath.startsWith('http://') ||
-          targetPath.startsWith('https://') ||
-          targetPath.startsWith('mailto:')
-        ) {
-          console.log(`Opening external URL: ${targetPath}`)
-          await shell.openExternal(targetPath)
+        if (/^(?:https?|mailto):/i.test(targetPath)) {
+          const externalUrl = validateExternalOpenUrl(targetPath)
+          console.log(`Opening external URL: ${externalUrl}`)
+          await shell.openExternal(externalUrl)
           return {
             success: true,
             message: `Successfully initiated opening URL: ${targetPath}`,
@@ -1222,10 +1241,9 @@ export function registerIPCHandlers(): void {
           timeout = 15000,
         } = args
 
-        const settings = await loadSettings()
         const validatedUrl = validateHttpBridgeUrl(
           url,
-          getAllowedHttpOrigins(settings)
+          await getCachedAllowedHttpOrigins()
         )
 
         console.log(
@@ -1302,10 +1320,9 @@ export function registerIPCHandlers(): void {
 
       let validatedUrl: string
       try {
-        const settings = await loadSettings()
         validatedUrl = validateHttpBridgeUrl(
           url,
-          getAllowedHttpOrigins(settings)
+          await getCachedAllowedHttpOrigins()
         )
       } catch (error: any) {
         return {

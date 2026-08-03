@@ -93,6 +93,29 @@ export function validateHttpBridgeUrl(
   return parsed.toString()
 }
 
+export function validateExternalOpenUrl(rawUrl: string): string {
+  let parsed: URL
+  try {
+    parsed = new URL(rawUrl)
+  } catch {
+    throw new Error('External URL is invalid.')
+  }
+
+  if (!['http:', 'https:', 'mailto:'].includes(parsed.protocol)) {
+    throw new Error(
+      'Only http, https, and mailto URLs can be opened externally.'
+    )
+  }
+  if (parsed.username || parsed.password) {
+    throw new Error('External URLs must not contain credentials.')
+  }
+  if (parsed.protocol === 'mailto:' && !parsed.pathname.trim()) {
+    throw new Error('A mailto URL must include a recipient.')
+  }
+
+  return parsed.toString()
+}
+
 export function resolvePathWithinRoot(
   rootPath: string,
   requestedPath: string

@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
 
@@ -26,16 +27,20 @@ type BatchEmbeddingRequest struct {
 	InputType string   `json:"input_type,omitempty"`
 }
 
-func prefixEmbeddingText(text, inputType string) string {
-	if strings.HasPrefix(text, "query: ") || strings.HasPrefix(text, "passage: ") {
-		return text
+func prefixEmbeddingText(text, inputType string) (string, error) {
+	normalizedInputType := strings.ToLower(strings.TrimSpace(inputType))
+	if normalizedInputType != "" && normalizedInputType != "query" && normalizedInputType != "passage" {
+		return "", fmt.Errorf("unsupported input_type %q; expected query or passage", inputType)
 	}
-	if inputType == "query" {
-		return "query: " + text
+	if strings.HasPrefix(text, "query: ") || strings.HasPrefix(text, "passage: ") {
+		return text, nil
+	}
+	if normalizedInputType == "query" {
+		return "query: " + text, nil
 	}
 	// E5 is trained with passage prefixes for stored/indexed content. Keep
 	// this as the compatibility default for older API clients.
-	return "passage: " + text
+	return "passage: " + text, nil
 }
 
 // BatchEmbeddingResponse represents a batch embedding response
@@ -91,10 +96,13 @@ func (h *Handler) GenerateEmbedding(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	embedding, err := embeddingService.GenerateEmbedding(
-		r.Context(),
-		prefixEmbeddingText(req.Text, strings.ToLower(strings.TrimSpace(req.InputType))),
-	)
+	prefixedText, err := prefixEmbeddingText(req.Text, req.InputType)
+	if err != nil {
+		h.writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	embedding, err := embeddingService.GenerateEmbedding(r.Context(), prefixedText)
 	if err != nil {
 		h.writeError(w, http.StatusInternalServerError, "Embedding generation failed: "+err.Error())
 		return
@@ -130,10 +138,14 @@ func (h *Handler) GenerateEmbeddings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	inputType := strings.ToLower(strings.TrimSpace(req.InputType))
 	prefixedTexts := make([]string, len(req.Texts))
 	for i, text := range req.Texts {
-		prefixedTexts[i] = prefixEmbeddingText(text, inputType)
+		prefixedText, err := prefixEmbeddingText(text, req.InputType)
+		if err != nil {
+			h.writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		prefixedTexts[i] = prefixedText
 	}
 	embeddings, err := embeddingService.GenerateEmbeddings(r.Context(), prefixedTexts)
 	if err != nil {

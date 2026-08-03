@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { getDBInstance } from './thoughtVectorStore'
 import type { MemoryRecord } from './thoughtVectorStore'
+import { buildMemoryFtsQuery } from './memorySearch'
 
 const OPENAI_VECTOR_DIMENSION = 1536
 const LOCAL_VECTOR_DIMENSION = 384 // multilingual-e5-small embedding dimension
@@ -82,55 +83,25 @@ function getProviderForEmbedding(
   return null
 }
 
-function tokenizeMemoryQuery(queryText: string): string[] {
-  const stopwords = new Set([
-    'как',
-    'где',
-    'когда',
-    'что',
-    'это',
-    'для',
-    'или',
-    'если',
-    'и',
-    'в',
-    'на',
-    'с',
-    'по',
-    'из',
-    'the',
-    'and',
-    'for',
-    'with',
-  ])
-  return Array.from(
-    new Set(
-      queryText
-        .normalize('NFKC')
-        .toLowerCase()
-        .split(/[^\p{L}\p{N}]+/u)
-        .filter(token => token.length >= 2 && !stopwords.has(token))
-    )
-  ).slice(0, 8)
-}
-
 function findMemoriesByKeywords(
   db: any,
   queryText: string,
   limit: number,
   memoryType?: string
 ): Partial<MemoryRecord>[] {
-  const tokens = tokenizeMemoryQuery(queryText)
-  if (tokens.length === 0) return []
+  const ftsQuery = buildMemoryFtsQuery(queryText)
+  if (!ftsQuery) return []
 
-  const clauses = tokens.map(() => 'content LIKE ?')
-  const params: any[] = tokens.map(token => `%${token}%`)
-  let sql = `SELECT id, content, memory_type, created_at FROM long_term_memories WHERE (${clauses.join(' OR ')})`
+  const params: any[] = [ftsQuery]
+  let sql = `SELECT memories.id, memories.content, memories.memory_type, memories.created_at
+    FROM long_term_memories AS memories
+    JOIN long_term_memories_fts ON long_term_memories_fts.rowid = memories.rowid
+    WHERE long_term_memories_fts MATCH ?`
   if (memoryType) {
-    sql += ' AND memory_type = ?'
+    sql += ' AND memories.memory_type = ?'
     params.push(memoryType)
   }
-  sql += ' ORDER BY created_at DESC LIMIT ?'
+  sql += ' ORDER BY memories.created_at DESC LIMIT ?'
   params.push(limit)
 
   const rows = db.prepare(sql).all(...params) as {

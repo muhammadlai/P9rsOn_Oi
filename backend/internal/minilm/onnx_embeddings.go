@@ -213,7 +213,10 @@ func (s *OnnxEmbeddingService) GenerateEmbeddings(ctx context.Context, texts []s
 	defer s.inferenceMu.Unlock()
 
 	// Tokenize all texts
-	ids, masks := s.batchTokenize(texts, s.maxLen)
+	ids, masks, err := s.batchTokenize(texts, s.maxLen)
+	if err != nil {
+		return nil, err
+	}
 
 	// Create tensors
 	bsz := len(texts)
@@ -315,22 +318,28 @@ func (s *OnnxEmbeddingService) GenerateEmbeddings(ctx context.Context, texts []s
 }
 
 // batchTokenize tokenizes multiple texts
-func (s *OnnxEmbeddingService) batchTokenize(texts []string, maxLen int) ([][]int64, [][]int64) {
+func (s *OnnxEmbeddingService) batchTokenize(texts []string, maxLen int) ([][]int64, [][]int64, error) {
 	ids := make([][]int64, len(texts))
 	masks := make([][]int64, len(texts))
 	for i, t := range texts {
-		ii, mm := s.encode(t, maxLen)
+		ii, mm, err := s.encode(t, maxLen)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to tokenize input %d: %w", i, err)
+		}
 		ids[i], masks[i] = ii, mm
 	}
-	return ids, masks
+	return ids, masks, nil
 }
 
-func (s *OnnxEmbeddingService) encode(text string, maxLen int) ([]int64, []int64) {
+func (s *OnnxEmbeddingService) encode(text string, maxLen int) ([]int64, []int64, error) {
 	encoding, err := s.tokenizer.EncodeSingle(text, true)
-	var seq []int
-	if err == nil && encoding != nil {
-		seq = encoding.Ids
+	if err != nil {
+		return nil, nil, fmt.Errorf("tokenizer encode failed: %w", err)
 	}
+	if encoding == nil {
+		return nil, nil, errors.New("tokenizer returned no encoding")
+	}
+	seq := encoding.Ids
 	if len(seq) > maxLen {
 		seq = seq[:maxLen]
 	}
@@ -340,7 +349,7 @@ func (s *OnnxEmbeddingService) encode(text string, maxLen int) ([]int64, []int64
 		ids[i] = int64(v)
 		mask[i] = 1
 	}
-	return ids, mask
+	return ids, mask, nil
 }
 
 // ComputeSimilarity computes cosine similarity between two embeddings

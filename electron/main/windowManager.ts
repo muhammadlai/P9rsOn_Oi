@@ -1,7 +1,10 @@
 import { BrowserWindow, screen, shell, protocol } from 'electron'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
-import { resolvePathWithinRoot } from './securityBoundaries'
+import {
+  resolvePathWithinRoot,
+  validateExternalOpenUrl,
+} from './securityBoundaries'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -39,6 +42,39 @@ let win: BrowserWindow | null = null
 let overlayWindow: BrowserWindow | null = null
 let settingsWindow: BrowserWindow | null = null
 
+function installNavigationGuards(window: BrowserWindow): void {
+  const openExternal = (url: string) => {
+    try {
+      void shell.openExternal(validateExternalOpenUrl(url))
+    } catch (error) {
+      console.warn('[Window Security] Blocked external URL:', url, error)
+    }
+  }
+
+  window.webContents.setWindowOpenHandler(({ url }) => {
+    openExternal(url)
+    return { action: 'deny' }
+  })
+  window.webContents.on('will-navigate', (event, url) => {
+    try {
+      const candidate = new URL(url)
+      if (VITE_DEV_SERVER_URL) {
+        if (candidate.origin === new URL(VITE_DEV_SERVER_URL).origin) return
+      } else if (
+        candidate.protocol === 'file:' &&
+        path.resolve(fileURLToPath(candidate)) ===
+          path.resolve(getIndexHtmlPath())
+      ) {
+        return
+      }
+    } catch {
+      // Invalid renderer navigation is blocked below.
+    }
+    event.preventDefault()
+    openExternal(url)
+  })
+}
+
 export function getMainWindow(): BrowserWindow | null {
   return win
 }
@@ -73,6 +109,8 @@ export async function createMainWindow(): Promise<BrowserWindow> {
     },
   })
 
+  installNavigationGuards(win)
+
   if (VITE_DEV_SERVER_URL) {
     win.loadURL(VITE_DEV_SERVER_URL)
   } else {
@@ -88,13 +126,6 @@ export async function createMainWindow(): Promise<BrowserWindow> {
       'main-process-message',
       `Alice ready at ${new Date().toLocaleString()}`
     )
-  })
-
-  win.webContents.setWindowOpenHandler(({ url }) => {
-    if (url.startsWith('https:') || url.startsWith('http:')) {
-      shell.openExternal(url)
-    }
-    return { action: 'deny' }
   })
 
   return win
@@ -126,6 +157,8 @@ export async function createOverlayWindow(): Promise<BrowserWindow> {
       backgroundThrottling: false,
     },
   })
+
+  installNavigationGuards(overlayWindow)
 
   const arg = 'overlay'
   if (VITE_DEV_SERVER_URL) {
@@ -239,6 +272,8 @@ export async function createSettingsWindow(): Promise<BrowserWindow> {
     },
   })
 
+  installNavigationGuards(settingsWindow)
+
   const arg = 'settings'
   if (VITE_DEV_SERVER_URL) {
     await settingsWindow.loadURL(`${VITE_DEV_SERVER_URL}#${arg}`)
@@ -251,13 +286,6 @@ export async function createSettingsWindow(): Promise<BrowserWindow> {
 
   settingsWindow.on('closed', () => {
     settingsWindow = null
-  })
-
-  settingsWindow.webContents.setWindowOpenHandler(({ url }) => {
-    if (url.startsWith('https:') || url.startsWith('http:')) {
-      shell.openExternal(url)
-    }
-    return { action: 'deny' }
   })
 
   return settingsWindow

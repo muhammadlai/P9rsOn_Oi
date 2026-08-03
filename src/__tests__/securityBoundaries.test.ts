@@ -4,6 +4,7 @@ import {
   getAllowedHttpOrigins,
   getHttpOriginsRequiringApproval,
   resolvePathWithinRoot,
+  validateExternalOpenUrl,
   validateHttpBridgeUrl,
 } from '../../electron/main/securityBoundaries'
 
@@ -92,5 +93,23 @@ describe('security boundaries', () => {
       ollamaBaseUrl: 'http://localhost:11434',
     })
     expect(() => validateHttpBridgeUrl(url, origins)).toThrow()
+  })
+
+  it('allows safe external web and mail links', () => {
+    expect(validateExternalOpenUrl('https://example.com/docs')).toBe(
+      'https://example.com/docs'
+    )
+    expect(validateExternalOpenUrl('mailto:alice@example.com')).toBe(
+      'mailto:alice@example.com'
+    )
+  })
+
+  it.each([
+    'file:///etc/passwd',
+    'javascript:alert(1)',
+    'https://user:password@example.com/private',
+    'mailto:',
+  ])('rejects an unsafe external URL: %s', url => {
+    expect(() => validateExternalOpenUrl(url)).toThrow()
   })
 })

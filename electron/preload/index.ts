@@ -16,7 +16,7 @@ const listenerWrappers = new Map<
 function assertAllowedChannel(
   channel: string,
   isAllowed: (channel: string) => boolean,
-  operation: string,
+  operation: string
 ): void {
   if (typeof channel !== 'string' || !isAllowed(channel)) {
     throw new Error(`Blocked IPC ${operation} channel: ${String(channel)}`)
@@ -26,7 +26,7 @@ function assertAllowedChannel(
 function rememberListenerWrapper(
   channel: string,
   listener: IpcListener,
-  wrapper: IpcListenerWrapper,
+  wrapper: IpcListenerWrapper
 ): void {
   let channelListeners = listenerWrappers.get(channel)
   if (!channelListeners) {
@@ -41,7 +41,7 @@ function rememberListenerWrapper(
 
 function forgetListenerWrapper(
   channel: string,
-  listener: IpcListener,
+  listener: IpcListener
 ): IpcListenerWrapper | undefined {
   const channelListeners = listenerWrappers.get(channel)
   const wrappers = channelListeners?.get(listener)
@@ -148,9 +148,9 @@ contextBridge.exposeInMainWorld('customAvatarsAPI', {
 
 contextBridge.exposeInMainWorld('desktopAPI', {
   listDirectory: (dirPath: string) =>
-    ipcRenderer.invoke('desktop:listDirectory', dirPath),
+    aliceIPC.invoke('desktop:listDirectory', dirPath),
   executeCommand: (command: string) =>
-    ipcRenderer.invoke('desktop:executeCommand', command),
+    aliceIPC.invoke('desktop:executeCommand', command),
 })
 
 // --------- Preload scripts loading ---------

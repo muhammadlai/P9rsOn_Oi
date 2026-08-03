@@ -27,6 +27,7 @@ export function useAudioProcessing() {
   const isVadInitializing = ref(false)
   const isSpeechDetected = ref(false)
   const vadAssetBasePath = ref<string>('./')
+  let ownsIpcListeners = false
 
   const handleGlobalMicToggle = () => {
     toggleRecordingRequest()
@@ -93,6 +94,7 @@ export function useAudioProcessing() {
         handleGlobalTakeScreenshot
       )
       ipcListenersRegistered = true
+      ownsIpcListeners = true
     }
   })
 
@@ -327,7 +329,7 @@ export function useAudioProcessing() {
 
   onUnmounted(() => {
     destroyVAD()
-    if (window.aliceIPC) {
+    if (window.aliceIPC && ownsIpcListeners) {
       window.aliceIPC.off('global-hotkey-mic-toggle', handleGlobalMicToggle)
       window.aliceIPC.off(
         'global-hotkey-mute-playback',
@@ -337,6 +339,8 @@ export function useAudioProcessing() {
         'global-hotkey-take-screenshot',
         handleGlobalTakeScreenshot
       )
+      ipcListenersRegistered = false
+      ownsIpcListeners = false
     }
   })
 

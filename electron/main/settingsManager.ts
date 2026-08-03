@@ -98,7 +98,7 @@ export interface AppSettings {
 
 export async function saveSettings(settings: AppSettings): Promise<void> {
   try {
-    const { publicSettings, secrets } = splitSecretSettings(
+    const { publicSettings, secrets, hadSecretFields } = splitSecretSettings(
       settings as Record<string, unknown>
     )
     const secretValues = secrets as Record<string, unknown>
@@ -110,7 +110,7 @@ export async function saveSettings(settings: AppSettings): Promise<void> {
         )
       }
       await saveEncryptedSecrets(secretValues)
-    } else if (await fileExists(secretsFilePath)) {
+    } else if (hadSecretFields && (await fileExists(secretsFilePath))) {
       if (protectedSecretsLoadFailed) {
         console.warn(
           '[Settings Security] Preserving protected secrets because the previous load failed.'

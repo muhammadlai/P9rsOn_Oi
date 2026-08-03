@@ -48,6 +48,11 @@ class DesktopManager {
           return { success: false, error: 'Command is too long.' }
         }
 
+        const commandPreview =
+          command.length > 4_000
+            ? `${command.slice(0, 4_000)}\n\n[Command preview truncated]`
+            : command
+
         const owner = BrowserWindow.fromWebContents(event.sender)
         const confirmation = owner
           ? await dialog.showMessageBox(owner, {
@@ -58,7 +63,7 @@ class DesktopManager {
               noLink: true,
               title: 'Allow command execution?',
               message: 'Alice wants to execute a command on this computer.',
-              detail: command,
+              detail: commandPreview,
             })
           : await dialog.showMessageBox({
               type: 'warning',
@@ -68,7 +73,7 @@ class DesktopManager {
               noLink: true,
               title: 'Allow command execution?',
               message: 'Alice wants to execute a command on this computer.',
-              detail: command,
+              detail: commandPreview,
             })
 
         if (confirmation.response !== 1) {
@@ -76,17 +81,23 @@ class DesktopManager {
         }
 
         return new Promise(resolve => {
-          exec(command, (error, stdout, stderr) => {
-            if (error) {
-              resolve({ success: false, error: error.message })
-              return
+          exec(
+            command,
+            { timeout: 60_000, maxBuffer: 1024 * 1024 },
+            (error, stdout, stderr) => {
+              if (error) {
+                resolve({
+                  success: false,
+                  error: stderr ? `${error.message}\n${stderr}` : error.message,
+                })
+                return
+              }
+              resolve({
+                success: true,
+                output: stderr ? `${stdout}${stderr}` : stdout,
+              })
             }
-            if (stderr) {
-              resolve({ success: false, error: stderr })
-              return
-            }
-            resolve({ success: true, output: stdout })
-          })
+          )
         })
       }
     )

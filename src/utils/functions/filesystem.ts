@@ -16,6 +16,15 @@ export interface ExecuteCommandArgs {
   command: string
 }
 
+function requireDesktopAPI() {
+  if (typeof window === 'undefined' || !window.desktopAPI) {
+    throw new Error(
+      'Electron desktop bridge not available. This function only works in the desktop app.'
+    )
+  }
+  return window.desktopAPI
+}
+
 export async function open_path(args: OpenPathArgs): Promise<FunctionResult> {
   console.log(`Invoking open_path with target: ${args.target}`)
 
@@ -49,7 +58,7 @@ export async function list_directory(
   args: ListDirectoryArgs
 ): Promise<FunctionResult> {
   try {
-    const result = await window.desktopAPI.listDirectory(args.path)
+    const result = await requireDesktopAPI().listDirectory(args.path)
     if (result.success) {
       return { success: true, data: result.files }
     } else {
@@ -64,7 +73,7 @@ export async function execute_command(
   args: ExecuteCommandArgs
 ): Promise<FunctionResult> {
   try {
-    const result = await window.desktopAPI.executeCommand(args.command)
+    const result = await requireDesktopAPI().executeCommand(args.command)
     if (result.success) {
       return { success: true, data: result.output }
     } else {

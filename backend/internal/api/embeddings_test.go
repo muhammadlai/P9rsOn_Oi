@@ -3,16 +3,19 @@ package api
 import "testing"
 
 func TestPrefixEmbeddingText(t *testing.T) {
-	if got := prefixEmbeddingText("как дела", "query"); got != "query: как дела" {
+	if got, err := prefixEmbeddingText("как дела", "query"); err != nil || got != "query: как дела" {
 		t.Fatalf("query prefix = %q", got)
 	}
-	if got := prefixEmbeddingText("важный факт", "passage"); got != "passage: важный факт" {
+	if got, err := prefixEmbeddingText("важный факт", "passage"); err != nil || got != "passage: важный факт" {
 		t.Fatalf("passage prefix = %q", got)
 	}
-	if got := prefixEmbeddingText("старый клиент", ""); got != "passage: старый клиент" {
+	if got, err := prefixEmbeddingText("старый клиент", ""); err != nil || got != "passage: старый клиент" {
 		t.Fatalf("compatibility prefix = %q", got)
 	}
-	if got := prefixEmbeddingText("query: уже готово", "passage"); got != "query: уже готово" {
+	if got, err := prefixEmbeddingText("query: уже готово", "passage"); err != nil || got != "query: уже готово" {
 		t.Fatalf("existing prefix = %q", got)
+	}
+	if _, err := prefixEmbeddingText("опечатка", "qurey"); err == nil {
+		t.Fatal("expected unsupported input_type to be rejected")
 	}
 }

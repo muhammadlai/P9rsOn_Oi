@@ -11,7 +11,7 @@ import (
 func TestMultilingualTokenizerEncodesCyrillic(t *testing.T) {
 	path := filepath.Join("..", "..", "models", "minilm", tokenizerFileName)
 	if _, err := os.Stat(path); err != nil {
-		t.Skipf("multilingual tokenizer artifact is not installed: %v", err)
+		t.Fatalf("multilingual tokenizer artifact is not installed: %v", err)
 	}
 	tk, err := pretrained.FromFile(path)
 	if err != nil {

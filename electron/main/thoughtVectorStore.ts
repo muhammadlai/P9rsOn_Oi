@@ -9,6 +9,7 @@ const { HierarchicalNSW } = HnswlibNode
 type HierarchicalNSWIndex = InstanceType<typeof HierarchicalNSW>
 import Database from 'better-sqlite3'
 import { randomUUID } from 'node:crypto'
+import { initializeMemorySearch } from './memorySearch'
 type SQLiteDatabase = any
 
 const OPENAI_VECTOR_DIMENSION = 1536 // OpenAI embedding dimension
@@ -22,8 +23,7 @@ const LOCAL_EMBEDDING_INVALIDATION_FLAG =
 // Versions before the automatic reindexer used this flag too early, before
 // any replacement vectors had been generated. Treat it as an invalidation
 // marker when upgrading from those versions.
-const LEGACY_LOCAL_EMBEDDING_MIGRATION_FLAG =
-  'multilingual_e5_local_embeddings'
+const LEGACY_LOCAL_EMBEDDING_MIGRATION_FLAG = 'multilingual_e5_local_embeddings'
 const LOCAL_EMBEDDING_BATCH_SIZE = 64
 const LOCAL_EMBEDDING_READY_TIMEOUT_MS = 120000
 const MAX_ELEMENTS_HNSW = 10000
@@ -121,6 +121,8 @@ function initDB() {
     );
   `)
 
+  initializeMemorySearch(db)
+
   db.exec(`
     CREATE TABLE IF NOT EXISTS conversation_summaries (
       id TEXT PRIMARY KEY,
@@ -142,28 +144,40 @@ function runMultilingualLocalEmbeddingMigration() {
 
   const migrationFlag = db
     .prepare('SELECT completed FROM migration_flags WHERE flag_name = ?')
-    .get(LOCAL_EMBEDDING_REINDEXED_FLAG) as
-    | { completed?: number }
-    | undefined
+    .get(LOCAL_EMBEDDING_REINDEXED_FLAG) as { completed?: number } | undefined
   if (migrationFlag?.completed) return
 
   const invalidationFlag = db
     .prepare('SELECT completed FROM migration_flags WHERE flag_name = ?')
-    .get(LOCAL_EMBEDDING_INVALIDATION_FLAG) as { completed?: number } | undefined
+    .get(LOCAL_EMBEDDING_INVALIDATION_FLAG) as
+    { completed?: number } | undefined
   const legacyMigrationFlag = db
     .prepare('SELECT completed FROM migration_flags WHERE flag_name = ?')
     .get(LEGACY_LOCAL_EMBEDDING_MIGRATION_FLAG) as
-    | { completed?: number }
-    | undefined
+    { completed?: number } | undefined
 
-  // The old flag proves that invalidation already happened, but not that
-  // replacement vectors were ever generated. Preserve that state and let the
-  // new reindexer finish it instead of invalidating any partial progress.
+  const removeStaleLocalIndex = () => {
+    if (existsSync(hnswLocalIndexFilePath)) {
+      unlinkSync(hnswLocalIndexFilePath)
+    }
+  }
+
+  // The old flag proves that database invalidation already happened, but not
+  // that the HNSW file was removed or replacement vectors were generated.
   if (invalidationFlag?.completed || legacyMigrationFlag?.completed) {
-    if (!invalidationFlag?.completed) {
+    try {
+      removeStaleLocalIndex()
       db.prepare(
         'INSERT OR REPLACE INTO migration_flags (flag_name, completed) VALUES (?, 1)'
       ).run(LOCAL_EMBEDDING_INVALIDATION_FLAG)
+    } catch (error) {
+      db.prepare('DELETE FROM migration_flags WHERE flag_name = ?').run(
+        LOCAL_EMBEDDING_INVALIDATION_FLAG
+      )
+      console.error(
+        '[ThoughtVectorStore Migration] Failed to remove stale local HNSW index:',
+        error
+      )
     }
     return
   }
@@ -182,25 +196,19 @@ function runMultilingualLocalEmbeddingMigration() {
         'UPDATE long_term_memories SET embedding_local = NULL WHERE embedding_local IS NOT NULL'
       )
       .run().changes
+    removeStaleLocalIndex()
     db.prepare(
       'INSERT OR REPLACE INTO migration_flags (flag_name, completed) VALUES (?, 1)'
     ).run(LOCAL_EMBEDDING_INVALIDATION_FLAG)
-    if (existsSync(hnswLocalIndexFilePath)) {
-      try {
-        unlinkSync(hnswLocalIndexFilePath)
-      } catch (error) {
-        console.warn(
-          '[ThoughtVectorStore Migration] Failed to remove stale local HNSW index:',
-          error
-        )
-      }
-    }
     if (thoughts || memories) {
       console.log(
         `[ThoughtVectorStore Migration] Invalidated ${thoughts} legacy thought and ${memories} legacy memory local embeddings for ${LOCAL_EMBEDDING_MODEL}.`
       )
     }
   } catch (error) {
+    db.prepare('DELETE FROM migration_flags WHERE flag_name = ?').run(
+      LOCAL_EMBEDDING_INVALIDATION_FLAG
+    )
     console.error(
       '[ThoughtVectorStore Migration] Failed to invalidate legacy local embeddings:',
       error
@@ -259,7 +267,11 @@ async function reindexLocalRows(
   if (!db || rows.length === 0) return 0
 
   let indexed = 0
-  for (let offset = 0; offset < rows.length; offset += LOCAL_EMBEDDING_BATCH_SIZE) {
+  for (
+    let offset = 0;
+    offset < rows.length;
+    offset += LOCAL_EMBEDDING_BATCH_SIZE
+  ) {
     const batch = rows.slice(offset, offset + LOCAL_EMBEDDING_BATCH_SIZE)
     const embeddings = await generateLocalEmbeddings(batch.map(row => row.text))
 
@@ -267,7 +279,10 @@ async function reindexLocalRows(
     db.transaction(() => {
       for (let index = 0; index < batch.length; index += 1) {
         const embedding = embeddings[index]
-        if (!Array.isArray(embedding) || embedding.length !== LOCAL_VECTOR_DIMENSION) {
+        if (
+          !Array.isArray(embedding) ||
+          embedding.length !== LOCAL_VECTOR_DIMENSION
+        ) {
           throw new Error(
             `[ThoughtVectorStore Migration] Invalid ${label} embedding payload.`
           )
@@ -292,9 +307,7 @@ export async function reindexMultilingualLocalEmbeddings(): Promise<{
 
   const migrationFlag = db
     .prepare('SELECT completed FROM migration_flags WHERE flag_name = ?')
-    .get(LOCAL_EMBEDDING_REINDEXED_FLAG) as
-    | { completed?: number }
-    | undefined
+    .get(LOCAL_EMBEDDING_REINDEXED_FLAG) as { completed?: number } | undefined
   if (migrationFlag?.completed) {
     return { required: false, indexed: 0 }
   }
@@ -1149,8 +1162,7 @@ export async function getLatestConversationSummary(
     sql += ' ORDER BY created_at DESC LIMIT 1'
 
     const row = currentDb.prepare(sql).get(...params) as
-      | ConversationSummaryRecord
-      | undefined
+      ConversationSummaryRecord | undefined
     return row || null
   } catch (error) {
     console.error(

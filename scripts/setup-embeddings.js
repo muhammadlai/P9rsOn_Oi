@@ -6,7 +6,7 @@ import https from 'https'
 import { createHash } from 'crypto'
 import { exec } from 'child_process'
 import { promisify } from 'util'
-import { fileURLToPath } from 'url'
+import { fileURLToPath, pathToFileURL } from 'url'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -25,23 +25,27 @@ const LIB_DIR = path.join(BACKEND_DIR, 'lib')
 const PLATFORMS = {
   'win32-x64': {
     url: `https://github.com/microsoft/onnxruntime/releases/download/v${ONNX_RUNTIME_VERSION}/onnxruntime-win-x64-${ONNX_RUNTIME_VERSION}.zip`,
+    sha256: '5c07bb2805cd666dda75fa9bfa60e75f2f90d478b952298dd9d55c00740d81bf',
     libFile: 'onnxruntime.dll',
     extractPath: `onnxruntime-win-x64-${ONNX_RUNTIME_VERSION}/lib/onnxruntime.dll`,
   },
   'linux-x64': {
     url: `https://github.com/microsoft/onnxruntime/releases/download/v${ONNX_RUNTIME_VERSION}/onnxruntime-linux-x64-${ONNX_RUNTIME_VERSION}.tgz`,
+    sha256: '7485c7e7aac6501b27e353dcbe068e45c61ab51fbaf598d13970dfae669d20bf',
     libFile: 'libonnxruntime.so',
     extractPath: `onnxruntime-linux-x64-${ONNX_RUNTIME_VERSION}/lib/libonnxruntime.so`,
   },
   'darwin-arm64': {
     url: `https://github.com/microsoft/onnxruntime/releases/download/v${ONNX_RUNTIME_VERSION}/onnxruntime-osx-arm64-${ONNX_RUNTIME_VERSION}.tgz`,
+    sha256: '5c3f2064ee97eb7774e87f396735c8eada7287734f1bb7847467ad30d4036115',
     libFile: 'libonnxruntime.dylib',
     extractPath: `onnxruntime-osx-arm64-${ONNX_RUNTIME_VERSION}/lib/libonnxruntime.dylib`,
   },
   'darwin-x64': {
-    url: `https://github.com/microsoft/onnxruntime/releases/download/v${ONNX_RUNTIME_VERSION}/onnxruntime-osx-x64-${ONNX_RUNTIME_VERSION}.tgz`,
+    url: `https://github.com/microsoft/onnxruntime/releases/download/v${ONNX_RUNTIME_VERSION}/onnxruntime-osx-x86_64-${ONNX_RUNTIME_VERSION}.tgz`,
+    sha256: '8305afd2d75ee5702844a23b099d41885af30ad3d1b4cf3d8d795e3d8c1f9396',
     libFile: 'libonnxruntime.dylib',
-    extractPath: `onnxruntime-osx-x64-${ONNX_RUNTIME_VERSION}/lib/libonnxruntime.dylib`,
+    extractPath: `onnxruntime-osx-x86_64-${ONNX_RUNTIME_VERSION}/lib/libonnxruntime.dylib`,
   },
 }
 
@@ -53,16 +57,22 @@ function ensureDir(dir) {
   }
 }
 
-function downloadFile(url, dest) {
+function downloadFile(url, dest, redirects = 0) {
   return new Promise((resolve, reject) => {
+    if (redirects > 5) {
+      reject(new Error(`Too many redirects while downloading ${url}`))
+      return
+    }
     console.log(`Downloading ${url}...`)
-    const file = fs.createWriteStream(dest)
-
     https
       .get(url, response => {
         if (response.statusCode === 302 || response.statusCode === 301) {
-          // Handle redirect
-          return downloadFile(response.headers.location, dest)
+          response.resume()
+          if (!response.headers.location) {
+            reject(new Error('Download redirect did not include a location.'))
+            return
+          }
+          return downloadFile(response.headers.location, dest, redirects + 1)
             .then(resolve)
             .catch(reject)
         }
@@ -71,9 +81,11 @@ function downloadFile(url, dest) {
           reject(
             new Error(`Download failed with status: ${response.statusCode}`)
           )
+          response.resume()
           return
         }
 
+        const file = fs.createWriteStream(dest)
         response.pipe(file)
 
         file.on('finish', () => {
@@ -83,11 +95,15 @@ function downloadFile(url, dest) {
         })
 
         file.on('error', err => {
-          fs.unlink(dest, () => {}) // Delete the file on error
+          response.destroy()
+          fs.rm(dest, { force: true }, () => {})
           reject(err)
         })
       })
-      .on('error', reject)
+      .on('error', error => {
+        fs.rm(dest, { force: true }, () => {})
+        reject(error)
+      })
   })
 }
 
@@ -133,49 +149,43 @@ async function downloadOnnxRuntime() {
   const tempDir = path.join(LIB_DIR, 'temp')
   ensureDir(tempDir)
 
-  for (const [platform, config] of Object.entries(PLATFORMS)) {
-    console.log(`\nDownloading ONNX Runtime for ${platform}...`)
+  try {
+    for (const [platform, config] of Object.entries(PLATFORMS)) {
+      console.log(`\nDownloading ONNX Runtime for ${platform}...`)
 
-    const platformDir = path.join(LIB_DIR, platform)
-    ensureDir(platformDir)
+      const platformDir = path.join(LIB_DIR, platform)
+      ensureDir(platformDir)
 
-    const archiveName = path.basename(config.url)
-    const archivePath = path.join(tempDir, archiveName)
-    const extractDir = path.join(tempDir, platform)
-    ensureDir(extractDir)
+      const archiveName = path.basename(config.url)
+      const archivePath = path.join(tempDir, archiveName)
+      const extractDir = path.join(tempDir, platform)
+      fs.rmSync(extractDir, { recursive: true, force: true })
+      ensureDir(extractDir)
 
-    try {
-      // Download
       await downloadFile(config.url, archivePath)
+      const archiveDigest = await sha256File(archivePath)
+      if (archiveDigest !== config.sha256) {
+        throw new Error(`Checksum mismatch for ${archiveName}`)
+      }
 
-      // Extract
       await extractArchive(archivePath, extractDir)
 
-      // Copy library file
       const sourceLib = path.join(extractDir, config.extractPath)
       const destLib = path.join(platformDir, config.libFile)
 
-      if (fs.existsSync(sourceLib)) {
-        fs.copyFileSync(sourceLib, destLib)
-        console.log(`Copied library: ${destLib}`)
-      } else {
-        console.warn(`Library file not found: ${sourceLib}`)
+      if (!fs.existsSync(sourceLib)) {
+        throw new Error(`Library file not found: ${sourceLib}`)
       }
-    } catch (error) {
-      console.error(`Failed to setup ${platform}: ${error.message}`)
+      fs.copyFileSync(sourceLib, destLib)
+      console.log(`Copied verified library: ${destLib}`)
     }
-  }
-
-  // Clean up temp directory
-  try {
+  } finally {
     fs.rmSync(tempDir, { recursive: true, force: true })
     console.log('Cleaned up temporary files')
-  } catch (error) {
-    console.warn(`Failed to clean up temp directory: ${error.message}`)
   }
 }
 
-async function downloadModel() {
+async function downloadModel({ tokenizerOnly = false } = {}) {
   console.log('\\nSetting up multilingual E5 model...')
 
   ensureDir(MODELS_DIR)
@@ -198,7 +208,11 @@ async function downloadModel() {
     },
   ]
 
-  for (const artifact of artifacts) {
+  const selectedArtifacts = tokenizerOnly
+    ? artifacts.filter(artifact => artifact.name.includes('tokenizer'))
+    : artifacts
+
+  for (const artifact of selectedArtifacts) {
     const destination = path.join(modelDir, artifact.name)
     if (fs.existsSync(destination)) {
       const existingDigest = await sha256File(destination)
@@ -222,12 +236,17 @@ async function main() {
   console.log('Setting up embeddings dependencies...')
 
   try {
-    await downloadOnnxRuntime()
-    await downloadModel()
+    const tokenizerOnly = process.argv.includes('--tokenizer-only')
+    if (!tokenizerOnly) {
+      await downloadOnnxRuntime()
+    }
+    await downloadModel({ tokenizerOnly })
 
     console.log('\\n✅ Embeddings setup completed!')
     console.log('\\nNext steps:')
-    console.log('1. Build the Go backend with the pinned multilingual artifacts')
+    console.log(
+      '1. Build the Go backend with the pinned multilingual artifacts'
+    )
     console.log('2. Verify electron-builder includes backend/models')
     console.log('3. Run the backend and test Memory/RAG retrieval')
   } catch (error) {
@@ -237,6 +256,9 @@ async function main() {
 }
 
 // Run if this is the main module
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (
+  process.argv[1] &&
+  import.meta.url === pathToFileURL(process.argv[1]).href
+) {
   main()
 }

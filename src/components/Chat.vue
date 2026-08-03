@@ -253,12 +253,10 @@ const handleChatClick = (event: MouseEvent) => {
                 "Failed to open external link via IPC ('electron:open-path'):",
                 result.message
               )
-              window.open(href, '_blank', 'noopener,noreferrer')
             }
           })
           .catch(err => {
             console.error("Error invoking 'electron:open-path' for link:", err)
-            window.open(href, '_blank', 'noopener,noreferrer')
           })
         return
       }

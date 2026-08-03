@@ -34,4 +34,16 @@ describe('settings secret boundaries', () => {
   it('does not treat empty credentials as secret values', () => {
     expect(hasSecretValues({ VITE_OPENAI_API_KEY: '' })).toBe(false)
   })
+
+  it('distinguishes partial saves from an explicit credential clear', () => {
+    expect(splitSecretSettings({ aiProvider: 'openai' }).hadSecretFields).toBe(
+      false
+    )
+    expect(
+      splitSecretSettings({
+        aiProvider: 'openai',
+        VITE_OPENAI_API_KEY: '',
+      }).hadSecretFields
+    ).toBe(true)
+  })
 })

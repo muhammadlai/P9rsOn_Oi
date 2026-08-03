@@ -1320,7 +1320,9 @@ export async function indexPaths(
   paths: string[],
   options?: { recursive?: boolean }
 ): Promise<{ indexed: number; skipped: number }> {
-  const queuedRun = indexPathsQueue.then(() => indexPathsInternal(paths, options))
+  const queuedRun = indexPathsQueue.then(() =>
+    indexPathsInternal(paths, options)
+  )
   indexPathsQueue = queuedRun.then(
     () => undefined,
     () => undefined
@@ -1328,11 +1330,14 @@ export async function indexPaths(
   return queuedRun
 }
 
-async function countLegacyEmbeddings(): Promise<number> {
+async function countLegacyEmbeddings(paths: string[]): Promise<number> {
+  const normalizedTargets = await normalizeRagTargets(paths)
+  if (normalizedTargets.length === 0) return 0
+
   const currentDb = ensureDb()
-  const row = currentDb
+  const rows = currentDb
     .prepare(
-      `SELECT COUNT(*) as count
+      `SELECT path
        FROM rag_documents
        WHERE embedding_model != ?
           OR EXISTS (
@@ -1341,8 +1346,10 @@ async function countLegacyEmbeddings(): Promise<number> {
               AND rag_chunks.embedding_model != ?
           )`
     )
-    .get(RAG_EMBEDDING_MODEL, RAG_EMBEDDING_MODEL) as { count: number }
-  return row.count || 0
+    .all(RAG_EMBEDDING_MODEL, RAG_EMBEDDING_MODEL) as Array<{ path: string }>
+
+  return rows.filter(row => shouldRemoveRagDoc(row.path, normalizedTargets))
+    .length
 }
 
 /**
@@ -1359,16 +1366,9 @@ export async function reindexRagIfNeeded(
   skipped: number
 }> {
   await initializeRagStore()
-  const legacyCount = await countLegacyEmbeddings()
+  const legacyCount = await countLegacyEmbeddings(paths)
   if (legacyCount === 0) {
     return { required: false, indexed: 0, skipped: 0 }
-  }
-
-  if (!paths || paths.length === 0) {
-    console.warn(
-      `[RAG] ${legacyCount} legacy document(s) need reindexing, but no configured RAG paths are available.`
-    )
-    return { required: true, indexed: 0, skipped: 0 }
   }
 
   console.log(

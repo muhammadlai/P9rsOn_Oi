@@ -38,6 +38,8 @@ export const INVOKE_CHANNELS = new Set([
   'save-image-from-base64',
   'electron:manage-clipboard',
   'electron:open-path',
+  'desktop:listDirectory',
+  'desktop:executeCommand',
   'http:request',
   'http:stream-start',
   'http:stream-cancel',
