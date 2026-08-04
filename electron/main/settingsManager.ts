@@ -67,7 +67,20 @@ export interface AppSettings {
   SUMMARIZATION_MODEL?: string
   SUMMARIZATION_SYSTEM_PROMPT?: string
   ttsProvider?: 'openai' | 'local'
-  ttsVoice?: 'alloy' | 'echo' | 'fable' | 'nova' | 'onyx' | 'shimmer'
+  ttsVoice?:
+    | 'alloy'
+    | 'ash'
+    | 'ballad'
+    | 'coral'
+    | 'echo'
+    | 'fable'
+    | 'nova'
+    | 'onyx'
+    | 'sage'
+    | 'shimmer'
+    | 'verse'
+    | 'marin'
+    | 'cedar'
   localTtsVoice?: string
   embeddingProvider?: 'openai' | 'local'
   ragEnabled?: boolean

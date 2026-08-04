@@ -111,6 +111,21 @@ describe('chatOrchestrator', () => {
     expect(dependencies.setAudioState).toHaveBeenCalledWith('IDLE')
   })
 
+  it.each(['AbortError', 'APIUserAbortError'])(
+    'silently handles %s from the OpenAI stream request',
+    async errorName => {
+      const error = Object.assign(new Error('Request was aborted.'), {
+        name: errorName,
+      })
+      const { dependencies, orchestrator } = setup({ throwError: error })
+
+      await orchestrator.runChat()
+
+      expect(dependencies.logError).not.toHaveBeenCalled()
+      expect(dependencies.handleStreamError).not.toHaveBeenCalled()
+    }
+  )
+
   it('skips work when store is not initialized', async () => {
     const ctx = setup()
     ctx.dependencies.isInitialized.mockReturnValue(false)

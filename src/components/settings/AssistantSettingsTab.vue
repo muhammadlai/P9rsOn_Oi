@@ -326,7 +326,7 @@
           </p>
           <p class="text-xs text-gray-400 mt-1">
             Model used for generating conversation summaries (e.g.,
-            gpt-4.1-nano).
+            gpt-5.6-luna).
           </p>
         </div>
 

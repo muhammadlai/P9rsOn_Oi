@@ -7,6 +7,7 @@ import type { AudioState } from './generalStore'
 import { useSettingsStore } from './settingsStore'
 import { executeFunction } from '../utils/functionCaller'
 import eventBus from '../utils/eventBus'
+import { isExpectedAbortError } from '../utils/isAbortError'
 import { createStreamHandler } from '../modules/conversation/streamHandler'
 import { createToolCallHandler } from '../modules/conversation/toolCallHandler'
 import { createApiInputBuilder } from '../modules/conversation/apiInputBuilder'
@@ -408,7 +409,7 @@ export const useConversationStore = defineStore('conversation', () => {
               }
             }
           } catch (error: any) {
-            if (error.name !== 'AbortError') {
+            if (!isExpectedAbortError(error)) {
               console.error(
                 '[ConversationStore] Failed to speak scheduler reminder:',
                 error
@@ -776,7 +777,7 @@ export const useConversationStore = defineStore('conversation', () => {
       setAudioState: (state: string) => setAudioState(state as AudioState),
       getAudioState: () => audioState.value,
       handleStreamError: (error: unknown) => {
-        if ((error as any)?.name === 'AbortError') return
+        if (isExpectedAbortError(error)) return
         console.error('Error processing stream:', error)
       },
     }
@@ -994,7 +995,7 @@ export const useConversationStore = defineStore('conversation', () => {
       )
       await processStream(streamResult, placeholderTempId, false)
     } catch (error: any) {
-      if (error.name !== 'AbortError') {
+      if (!isExpectedAbortError(error)) {
         console.error('Error starting OpenAI response stream:', error)
 
         if (

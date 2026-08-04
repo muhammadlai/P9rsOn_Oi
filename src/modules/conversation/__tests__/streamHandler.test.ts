@@ -170,22 +170,24 @@ describe('createStreamHandler', () => {
     expect(spies.handleStreamError).toHaveBeenCalledWith(error)
   })
 
-  it('returns early without error when the stream is aborted', async () => {
-    const { deps, spies } = createDependencies()
-    const handler = createStreamHandler(deps)
+  it.each(['AbortError', 'APIUserAbortError'])(
+    'returns early without error for %s',
+    async errorName => {
+      const { deps, spies } = createDependencies()
+      const handler = createStreamHandler(deps)
 
-    const abortingStream: AsyncIterable<any> = {
-      async *[Symbol.asyncIterator]() {
-        const abortError = new Error('aborted')
-        abortError.name = 'AbortError'
-        throw abortError
-      },
+      const abortingStream: AsyncIterable<any> = {
+        async *[Symbol.asyncIterator]() {
+          const abortError = new Error('aborted')
+          abortError.name = errorName
+          throw abortError
+        },
+      }
+
+      const result = await handler.process({ stream: abortingStream })
+
+      expect(result.streamEndedNormally).toBe(false)
+      expect(spies.handleStreamError).not.toHaveBeenCalled()
     }
-
-    const result = await handler.process({ stream: abortingStream })
-
-    expect(result.streamEndedNormally).toBe(false)
-    expect(spies.handleStreamError).not.toHaveBeenCalled()
-  })
+  )
 })
-

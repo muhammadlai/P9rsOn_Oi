@@ -92,7 +92,7 @@ import { listZAIModelsForConfig } from '../../services/llmProviders/zai'
 const step = ref(1)
 const settingsStore = useSettingsStore()
 const scrollContainer = ref<HTMLElement>()
-const OPENAI_SUMMARIZATION_MODEL = 'gpt-4.1-nano'
+const OPENAI_SUMMARIZATION_MODEL = 'gpt-5.6-luna'
 const DEFAULT_MAIN_WINDOW_SIZE = {
   width: 500,
   height: 500,

@@ -67,7 +67,20 @@ export interface AliceSettings {
   SUMMARIZATION_MODEL: string
   SUMMARIZATION_SYSTEM_PROMPT: string
   ttsProvider: 'openai' | 'google' | 'local'
-  ttsVoice: 'alloy' | 'echo' | 'fable' | 'nova' | 'onyx' | 'shimmer'
+  ttsVoice:
+    | 'alloy'
+    | 'ash'
+    | 'ballad'
+    | 'coral'
+    | 'echo'
+    | 'fable'
+    | 'nova'
+    | 'onyx'
+    | 'sage'
+    | 'shimmer'
+    | 'verse'
+    | 'marin'
+    | 'cedar'
   googleTtsVoice: string
   localTtsVoice: string
   embeddingProvider: 'openai' | 'local'
@@ -168,7 +181,7 @@ const defaultSettings: AliceSettings = {
   mcpServersConfig: '[]',
   MAX_HISTORY_MESSAGES_FOR_API: 10,
   SUMMARIZATION_MESSAGE_COUNT: 20,
-  SUMMARIZATION_MODEL: 'gpt-4.1-nano',
+  SUMMARIZATION_MODEL: 'gpt-5.6-luna',
   SUMMARIZATION_SYSTEM_PROMPT: DEFAULT_SUMMARIZATION_SYSTEM_PROMPT,
   ttsProvider: 'openai',
   ttsVoice: 'nova',

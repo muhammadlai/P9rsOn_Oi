@@ -1,4 +1,5 @@
 import type { ChatMessage } from '../../types/chat'
+import { isExpectedAbortError } from '../../utils/isAbortError'
 
 export interface ReminderData {
   message: string
@@ -46,7 +47,7 @@ export function createReminderHandler(
         await dependencies.enqueueSpeech(data.message)
       }
     } catch (error: any) {
-      if (error?.name === 'AbortError') {
+      if (isExpectedAbortError(error)) {
         return
       }
       dependencies.logError(
@@ -64,4 +65,3 @@ export function createReminderHandler(
     },
   }
 }
-

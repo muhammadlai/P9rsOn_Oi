@@ -4,6 +4,7 @@ import type {
   StreamProcessingOptions,
   StreamProcessingResult,
 } from './types'
+import { isExpectedAbortError } from '../../utils/isAbortError'
 
 const SENTENCE_END_REGEX = /[.!?]\s*$/
 
@@ -139,7 +140,7 @@ export function createStreamHandler(
 
         await flushSentence()
       } catch (error: any) {
-        if (error?.name === 'AbortError') {
+        if (isExpectedAbortError(error)) {
           return { streamEndedNormally: false }
         }
         streamEndedNormally = false

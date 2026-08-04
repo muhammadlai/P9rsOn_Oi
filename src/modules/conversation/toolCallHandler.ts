@@ -1,17 +1,10 @@
 import type OpenAI from 'openai'
 import type { ToolCallHandler, ToolCallHandlerDependencies } from './types'
 import type { AudioState } from '../../stores/generalStore'
+import { isExpectedAbortError } from '../../utils/isAbortError'
 
 const PREVIOUS_RESPONSE_NOT_FOUND = 'Previous response with id'
 const NOT_FOUND_SUFFIX = 'not found'
-
-function isAbortError(error: unknown): boolean {
-  return (
-    !!error &&
-    typeof error === 'object' &&
-    (error as { name?: string }).name === 'AbortError'
-  )
-}
 
 function isPreviousResponseMissingError(error: unknown): boolean {
   if (!error || typeof error !== 'object') return false
@@ -87,7 +80,7 @@ export function createToolCallHandler(
         await attemptContinuation(originalResponseIdForTool)
         return
       } catch (error) {
-        if (isAbortError(error)) {
+        if (isExpectedAbortError(error)) {
           return
         }
 
@@ -109,7 +102,7 @@ export function createToolCallHandler(
             await attemptContinuation(null)
             return
           } catch (retryError) {
-            if (!isAbortError(retryError)) {
+            if (!isExpectedAbortError(retryError)) {
               dependencies.logError(
                 '[Error Recovery] Retry also failed:',
                 retryError

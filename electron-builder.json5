@@ -40,6 +40,8 @@
   mac: {
     target: ['dmg'],
     icon: 'public/app_logo.png',
+    entitlements: 'build/entitlements.mac.plist',
+    entitlementsInherit: 'build/entitlements.mac.plist',
     artifactName: 'Alice-AI-App-Mac-${version}-Installer.${ext}',
   },
   win: {

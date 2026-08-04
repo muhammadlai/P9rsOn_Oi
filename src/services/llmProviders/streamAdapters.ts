@@ -1,6 +1,4 @@
-function isAbortError(error: any): boolean {
-  return error?.name === 'AbortError'
-}
+import { isExpectedAbortError } from '../../utils/isAbortError'
 
 export async function* convertLocalLLMStreamToResponsesFormat(
   stream: any,
@@ -190,7 +188,7 @@ export async function* convertLocalLLMStreamToResponsesFormat(
       }
     }
   } catch (error) {
-    if (isAbortError(error)) {
+    if (isExpectedAbortError(error)) {
       throw error
     }
 
@@ -517,7 +515,7 @@ export async function* convertOpenRouterStreamToResponsesFormat(stream: any) {
       }
     }
   } catch (error) {
-    if (isAbortError(error)) {
+    if (isExpectedAbortError(error)) {
       throw error
     }
 
