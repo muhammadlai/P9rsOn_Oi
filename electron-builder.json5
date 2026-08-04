@@ -42,6 +42,10 @@
     icon: 'public/app_logo.png',
     entitlements: 'build/entitlements.mac.plist',
     entitlementsInherit: 'build/entitlements.mac.plist',
+    extendInfo: {
+      NSMicrophoneUsageDescription:
+        'Alice uses the microphone for voice activity detection and speech recognition.',
+    },
     artifactName: 'Alice-AI-App-Mac-${version}-Installer.${ext}',
   },
   win: {
