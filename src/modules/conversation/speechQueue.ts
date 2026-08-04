@@ -30,6 +30,13 @@ export function createSpeechQueueManager(
           abortController.signal
         )
 
+        // A provider may resolve a request after AbortController.abort() has
+        // been called. Never let that stale response restart playback after a
+        // barge-in or an explicit TTS cancellation.
+        if (abortController.signal.aborted) {
+          return
+        }
+
         const enqueued = dependencies.queueAudioForPlayback(ttsResponse)
         if (enqueued && dependencies.getAudioState() !== 'SPEAKING') {
           dependencies.setAudioState('SPEAKING')
@@ -43,4 +50,3 @@ export function createSpeechQueueManager(
     },
   }
 }
-

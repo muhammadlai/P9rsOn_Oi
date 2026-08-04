@@ -23,7 +23,7 @@ export function useScreenshot() {
       screenShot.value = ''
       statusMessage.value = 'Taking a screenshot...'
       try {
-        await window.ipcRenderer.invoke('show-overlay')
+        await window.aliceIPC.invoke('show-overlay')
         console.log('Screenshot overlay requested.')
       } catch (error) {
         console.error('Error showing screenshot overlay:', error)
@@ -41,7 +41,7 @@ export function useScreenshot() {
     if (isElectron) {
       handleScreenshotCapturedListener = async () => {
         try {
-          const dataURI = await window.ipcRenderer.invoke('get-screenshot')
+          const dataURI = await window.aliceIPC.invoke('get-screenshot')
           if (dataURI) {
             screenShot.value = dataURI
             screenshotReady.value = true
@@ -65,15 +65,15 @@ export function useScreenshot() {
               : 'Stand by'
           }
           takingScreenShot.value = false
-          window.ipcRenderer?.invoke('focus-main-window')
+          window.aliceIPC?.invoke('focus-main-window')
         }
       }
 
-      window.ipcRenderer.on(
+      window.aliceIPC.on(
         'screenshot-captured',
         handleScreenshotCapturedListener
       )
-      window.ipcRenderer.on('overlay-closed', handleOverlayClosedListener)
+      window.aliceIPC.on('overlay-closed', handleOverlayClosedListener)
     } else {
       console.log('Not in Electron, skipping screenshot listener setup.')
     }
@@ -83,13 +83,13 @@ export function useScreenshot() {
     if (isElectron) {
       try {
         if (handleScreenshotCapturedListener) {
-          window.ipcRenderer.off(
+          window.aliceIPC.off(
             'screenshot-captured',
             handleScreenshotCapturedListener
           )
         }
         if (handleOverlayClosedListener) {
-          window.ipcRenderer.off('overlay-closed', handleOverlayClosedListener)
+          window.aliceIPC.off('overlay-closed', handleOverlayClosedListener)
         }
       } catch (error) {
         console.error('Error removing screenshot IPC listeners:', error)

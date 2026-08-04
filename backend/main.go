@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"errors"
 	"log/slog"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
@@ -36,8 +38,8 @@ func main() {
 
 	// Start server in a goroutine
 	go func() {
-		slog.Info("Starting HTTP server", "address", ":"+cfg.Server.Port)
-		if err := srv.Start(cfg.Server.Port); err != nil {
+		slog.Info("Starting HTTP server", "host", "127.0.0.1", "port", cfg.Server.Port)
+		if err := srv.Start(cfg.Server.Port); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			slog.Error("Server error", "error", err)
 			os.Exit(1)
 		}

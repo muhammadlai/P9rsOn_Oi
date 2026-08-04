@@ -24,6 +24,19 @@ function isBrowserContextToolEnabled(settings: any): boolean {
 }
 
 const activeHttpStreams = new Map<string, AbortController>()
+let cachedAllowedHttpOrigins: Promise<Set<string>> | null = null
+
+async function getCachedAllowedHttpOrigins(): Promise<Set<string>> {
+  if (!cachedAllowedHttpOrigins) {
+    cachedAllowedHttpOrigins = loadSettings()
+      .then(settings => getAllowedHttpOrigins(settings))
+      .catch(error => {
+        cachedAllowedHttpOrigins = null
+        throw error
+      })
+  }
+  return cachedAllowedHttpOrigins
+}
 
 function sendHttpStreamEvent(
   sender: WebContents,
@@ -103,7 +116,15 @@ import {
 import {
   loadCustomAvatarsFromDisk,
   refreshCustomAvatars,
+  getCustomAvatarsRootPath,
 } from './customAvatarsManager'
+import {
+  getAllowedHttpOrigins,
+  getHttpOriginsRequiringApproval,
+  resolvePathWithinRoot,
+  validateExternalOpenUrl,
+  validateHttpBridgeUrl,
+} from './securityBoundaries'
 
 const USER_DATA_PATH = app.getPath('userData')
 const GENERATED_IMAGES_DIR_NAME = 'generated_images'
@@ -115,6 +136,17 @@ const GENERATED_IMAGES_FULL_PATH = path.join(
 let screenshotDataURL: string | null = null
 
 let ipcHandlersRegistered = false
+
+function isTrustedLocalOpenPath(targetPath: string): boolean {
+  const candidate = path.resolve(targetPath)
+  return [GENERATED_IMAGES_FULL_PATH, getCustomAvatarsRootPath()].some(root => {
+    const relative = path.relative(path.resolve(root), candidate)
+    return (
+      relative === '' ||
+      (!relative.startsWith('..') && !path.isAbsolute(relative))
+    )
+  })
+}
 
 function broadcastCustomToolsUpdate() {
   BrowserWindow.getAllWindows().forEach(window => {
@@ -365,13 +397,20 @@ export function registerIPCHandlers(): void {
         limit,
         memoryType,
         queryEmbedding,
-      }: { limit?: number; memoryType?: string; queryEmbedding?: number[] }
+        queryText,
+      }: {
+        limit?: number
+        memoryType?: string
+        queryEmbedding?: number[]
+        queryText?: string
+      }
     ) => {
       try {
         const memories = await getRecentMemoriesLocal(
           limit,
           memoryType,
-          queryEmbedding
+          queryEmbedding,
+          queryText
         )
         return { success: true, data: memories }
       } catch (error) {
@@ -623,7 +662,9 @@ export function registerIPCHandlers(): void {
 
   // Settings management
   ipcMain.handle('settings:load', async () => {
-    return await loadSettings()
+    const settings = await loadSettings()
+    cachedAllowedHttpOrigins = Promise.resolve(getAllowedHttpOrigins(settings))
+    return settings
   })
 
   ipcMain.handle(
@@ -631,7 +672,45 @@ export function registerIPCHandlers(): void {
     async (event, settingsToSave: AppSettings) => {
       try {
         const oldSettings = await loadSettings()
+        const originsRequiringApproval = getHttpOriginsRequiringApproval(
+          oldSettings,
+          settingsToSave
+        )
+
+        if (originsRequiringApproval.length > 0) {
+          const detail = originsRequiringApproval
+            .map(origin => `• ${origin}`)
+            .join('\n')
+          const options = {
+            type: 'warning' as const,
+            buttons: ['Cancel', 'Allow'],
+            defaultId: 0,
+            cancelId: 0,
+            noLink: true,
+            title: 'Allow network service?',
+            message:
+              originsRequiringApproval.length === 1
+                ? 'Alice wants to connect to a new network service.'
+                : 'Alice wants to connect to new network services.',
+            detail: `${detail}\n\nOnly allow services that you configured and trust.`,
+          }
+          const owner = BrowserWindow.fromWebContents(event.sender)
+          const confirmation = owner
+            ? await dialog.showMessageBox(owner, options)
+            : await dialog.showMessageBox(options)
+
+          if (confirmation.response !== 1) {
+            return {
+              success: false,
+              error: 'Network service change was not approved.',
+            }
+          }
+        }
+
         await saveSettings(settingsToSave)
+        cachedAllowedHttpOrigins = Promise.resolve(
+          getAllowedHttpOrigins(settingsToSave)
+        )
 
         // Handle hotkey changes
         if (
@@ -892,7 +971,7 @@ export function registerIPCHandlers(): void {
       try {
         await mkdir(GENERATED_IMAGES_FULL_PATH, { recursive: true })
 
-        const absoluteFilePath = path.join(
+        const absoluteFilePath = resolvePathWithinRoot(
           GENERATED_IMAGES_FULL_PATH,
           args.fileName
         )
@@ -947,18 +1026,47 @@ export function registerIPCHandlers(): void {
       console.log(`Main process received request to open: ${targetPath}`)
 
       try {
-        if (
-          targetPath.startsWith('http://') ||
-          targetPath.startsWith('https://') ||
-          targetPath.startsWith('mailto:')
-        ) {
-          console.log(`Opening external URL: ${targetPath}`)
-          await shell.openExternal(targetPath)
+        if (/^(?:https?|mailto):/i.test(targetPath)) {
+          const externalUrl = validateExternalOpenUrl(targetPath)
+          console.log(`Opening external URL: ${externalUrl}`)
+          await shell.openExternal(externalUrl)
           return {
             success: true,
             message: `Successfully initiated opening URL: ${targetPath}`,
           }
         } else {
+          if (!isTrustedLocalOpenPath(targetPath)) {
+            const owner = BrowserWindow.fromWebContents(event.sender)
+            const confirmation = owner
+              ? await dialog.showMessageBox(owner, {
+                  type: 'warning',
+                  buttons: ['Cancel', 'Open'],
+                  defaultId: 0,
+                  cancelId: 0,
+                  noLink: true,
+                  title: 'Allow opening a local path?',
+                  message: 'Alice wants to open a local path or application.',
+                  detail: targetPath,
+                })
+              : await dialog.showMessageBox({
+                  type: 'warning',
+                  buttons: ['Cancel', 'Open'],
+                  defaultId: 0,
+                  cancelId: 0,
+                  noLink: true,
+                  title: 'Allow opening a local path?',
+                  message: 'Alice wants to open a local path or application.',
+                  detail: targetPath,
+                })
+
+            if (confirmation.response !== 1) {
+              return {
+                success: false,
+                message: 'Opening the local path was denied by the user.',
+              }
+            }
+          }
+
           console.log(`Opening path/application: ${targetPath}`)
           const errorMessage = await shell.openPath(targetPath)
 
@@ -1133,15 +1241,24 @@ export function registerIPCHandlers(): void {
           timeout = 15000,
         } = args
 
-        console.log(`[IPC http:request] Making ${method} request to:`, url)
+        const validatedUrl = validateHttpBridgeUrl(
+          url,
+          await getCachedAllowedHttpOrigins()
+        )
+
+        console.log(
+          `[IPC http:request] Making ${method} request to:`,
+          validatedUrl
+        )
 
         const response = await axios({
-          url,
+          url: validatedUrl,
           method,
           headers,
           params,
           data,
           timeout,
+          maxRedirects: 0,
           validateStatus: () => true, // Don't throw on HTTP error status codes
         })
 
@@ -1201,6 +1318,19 @@ export function registerIPCHandlers(): void {
         }
       }
 
+      let validatedUrl: string
+      try {
+        validatedUrl = validateHttpBridgeUrl(
+          url,
+          await getCachedAllowedHttpOrigins()
+        )
+      } catch (error: any) {
+        return {
+          success: false,
+          error: error.message,
+        }
+      }
+
       const abortController = new AbortController()
       activeHttpStreams.set(requestId, abortController)
       const sender = event.sender
@@ -1236,15 +1366,19 @@ export function registerIPCHandlers(): void {
         }
 
         try {
-          console.log(`[IPC http:stream] Making ${method} request to:`, url)
+          console.log(
+            `[IPC http:stream] Making ${method} request to:`,
+            validatedUrl
+          )
 
           const response = await axios({
-            url,
+            url: validatedUrl,
             method,
             headers,
             params,
             data,
             timeout,
+            maxRedirects: 0,
             responseType: 'stream',
             signal: abortController.signal,
             validateStatus: () => true,

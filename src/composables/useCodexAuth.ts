@@ -45,7 +45,7 @@ export function useCodexAuth() {
     codexAuthStatus.isLoading = true
     codexAuthStatus.error = null
     try {
-      const result = await window.ipcRenderer.invoke('codex-auth:status')
+      const result = await window.aliceIPC.invoke('codex-auth:status')
       syncSettings(result || {})
       if (result?.error) {
         codexAuthStatus.error = result.error
@@ -68,7 +68,7 @@ export function useCodexAuth() {
     codexAuthStatus.error = null
     codexAuthStatus.message = null
     try {
-      const result = await window.ipcRenderer.invoke('codex-auth:start-login')
+      const result = await window.aliceIPC.invoke('codex-auth:start-login')
       if (result?.success) {
         codexAuthStatus.message =
           'ChatGPT authorization opened in your browser.'
@@ -91,7 +91,7 @@ export function useCodexAuth() {
     codexAuthStatus.error = null
     codexAuthStatus.message = 'Disconnecting ChatGPT Codex...'
     try {
-      const result = await window.ipcRenderer.invoke('codex-auth:disconnect')
+      const result = await window.aliceIPC.invoke('codex-auth:disconnect')
       if (result?.success) {
         syncSettings({ available: true, connected: false })
         codexAuthStatus.authInProgress = false
@@ -110,7 +110,7 @@ export function useCodexAuth() {
     }
   }
 
-  function handleCodexLoginCompleted(event: any, payload: any) {
+  function handleCodexLoginCompleted(payload: any) {
     codexAuthStatus.authInProgress = false
     if (payload?.success === false) {
       codexAuthStatus.isAuthenticated = false
@@ -125,7 +125,6 @@ export function useCodexAuth() {
   }
 
   function handleCodexStatusChanged(
-    event: any,
     payload: CodexAccountStatusPayload
   ) {
     codexAuthStatus.authInProgress = false
@@ -142,30 +141,30 @@ export function useCodexAuth() {
 
   onMounted(async () => {
     await checkCodexAuthStatus()
-    if (window.ipcRenderer) {
-      window.ipcRenderer.on(
+    if (window.aliceIPC) {
+      window.aliceIPC.on(
         'codex-auth-login-completed',
         handleCodexLoginCompleted
       )
-      window.ipcRenderer.on(
+      window.aliceIPC.on(
         'codex-auth-status-changed',
         handleCodexStatusChanged
       )
-      window.ipcRenderer.on('codex-auth-updated', handleCodexAccountUpdated)
+      window.aliceIPC.on('codex-auth-updated', handleCodexAccountUpdated)
     }
   })
 
   onUnmounted(() => {
-    if (window.ipcRenderer) {
-      window.ipcRenderer.off(
+    if (window.aliceIPC) {
+      window.aliceIPC.off(
         'codex-auth-login-completed',
         handleCodexLoginCompleted
       )
-      window.ipcRenderer.off(
+      window.aliceIPC.off(
         'codex-auth-status-changed',
         handleCodexStatusChanged
       )
-      window.ipcRenderer.off('codex-auth-updated', handleCodexAccountUpdated)
+      window.aliceIPC.off('codex-auth-updated', handleCodexAccountUpdated)
     }
   })
 

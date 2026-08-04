@@ -48,6 +48,7 @@ import {
 } from './llmProviders/providerCatalog'
 import type { AppChatMessageContentPart } from '../types/chat'
 import type { RagSearchResult } from '../types/rag'
+import type { EmbeddingInputType } from './backendApi'
 
 /**
  * Parse WAV file ArrayBuffer and extract raw PCM audio data as Float32Array
@@ -573,28 +574,35 @@ function extractTextForEmbedding(textInput: any): string {
   return ''
 }
 
-async function generateLocalEmbedding(textToEmbed: string): Promise<number[]> {
+async function generateLocalEmbedding(
+  textToEmbed: string,
+  inputType: EmbeddingInputType = 'query'
+): Promise<number[]> {
   const { backendApi } = await import('./backendApi')
   const embeddingsReady = await backendApi.isEmbeddingsReady()
   if (!embeddingsReady) {
     return []
   }
-  return await backendApi.generateEmbedding(textToEmbed)
+  return await backendApi.generateEmbedding(textToEmbed, inputType)
 }
 
 export const createLocalEmbedding = async (
-  textInput: any
+  textInput: any,
+  inputType: EmbeddingInputType = 'query'
 ): Promise<number[]> => {
   const textToEmbed = extractTextForEmbedding(textInput)
   if (!textToEmbed.trim()) return []
   try {
-    return await generateLocalEmbedding(textToEmbed)
+    return await generateLocalEmbedding(textToEmbed, inputType)
   } catch (error) {
     return []
   }
 }
 
-export const createEmbedding = async (textInput: any): Promise<number[]> => {
+export const createEmbedding = async (
+  textInput: any,
+  inputType: EmbeddingInputType = 'query'
+): Promise<number[]> => {
   const settings = useSettingsStore().config
   const textToEmbed = extractTextForEmbedding(textInput)
 
@@ -607,7 +615,7 @@ export const createEmbedding = async (textInput: any): Promise<number[]> => {
 
   if (shouldPreferLocal) {
     try {
-      const embedding = await generateLocalEmbedding(textToEmbed)
+      const embedding = await generateLocalEmbedding(textToEmbed, inputType)
       if (embedding && embedding.length > 0) {
         return embedding
       }
@@ -619,7 +627,7 @@ export const createEmbedding = async (textInput: any): Promise<number[]> => {
 
   if (!hasOpenAIKey) {
     try {
-      return await generateLocalEmbedding(textToEmbed)
+      return await generateLocalEmbedding(textToEmbed, inputType)
     } catch (error) {
       return []
     }
@@ -640,7 +648,7 @@ export const createDualEmbeddings = async (
   const results: { openai?: number[]; local?: number[] } = {}
 
   try {
-    const localEmbedding = await generateLocalEmbedding(textToEmbed)
+    const localEmbedding = await generateLocalEmbedding(textToEmbed, 'passage')
     if (localEmbedding && localEmbedding.length > 0) {
       results.local = localEmbedding
     }
@@ -679,7 +687,7 @@ export const indexMessageForThoughts = async (
   role: string,
   message: any
 ): Promise<void> => {
-  const embedding = await createEmbedding(message)
+  const embedding = await createEmbedding(message, 'passage')
   if (embedding.length === 0) return
 
   let textContentForMetadata = 'No textual content'
@@ -694,7 +702,7 @@ export const indexMessageForThoughts = async (
     textContentForMetadata = message.content
   }
 
-  await window.ipcRenderer.invoke('thoughtVector:add', {
+  await window.aliceIPC.invoke('thoughtVector:add', {
     conversationId,
     role,
     textContent: textContentForMetadata,
@@ -717,7 +725,7 @@ export const retrieveRelevantThoughtsForPrompt = async (
   const queryEmbedding = await createEmbedding(content)
   if (queryEmbedding.length === 0) return []
 
-  const ipcResult = await window.ipcRenderer.invoke('thoughtVector:search', {
+  const ipcResult = await window.aliceIPC.invoke('thoughtVector:search', {
     queryEmbedding,
     topK,
   })
@@ -735,7 +743,7 @@ export const retrieveRelevantDocumentsForPrompt = async (
 
   const queryEmbedding = await createLocalEmbedding(content)
 
-  const ipcResult = await window.ipcRenderer.invoke('rag:search', {
+  const ipcResult = await window.aliceIPC.invoke('rag:search', {
     queryEmbedding,
     queryText: content,
     topK,

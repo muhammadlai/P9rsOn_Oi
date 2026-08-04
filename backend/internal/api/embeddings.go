@@ -2,14 +2,17 @@ package api
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/gorilla/mux"
 )
 
 // EmbeddingRequest represents a single embedding request
 type EmbeddingRequest struct {
-	Text string `json:"text"`
+	Text      string `json:"text"`
+	InputType string `json:"input_type,omitempty"`
 }
 
 // EmbeddingResponse represents a single embedding response
@@ -20,7 +23,24 @@ type EmbeddingResponse struct {
 
 // BatchEmbeddingRequest represents a batch embedding request
 type BatchEmbeddingRequest struct {
-	Texts []string `json:"texts"`
+	Texts     []string `json:"texts"`
+	InputType string   `json:"input_type,omitempty"`
+}
+
+func prefixEmbeddingText(text, inputType string) (string, error) {
+	normalizedInputType := strings.ToLower(strings.TrimSpace(inputType))
+	if normalizedInputType != "" && normalizedInputType != "query" && normalizedInputType != "passage" {
+		return "", fmt.Errorf("unsupported input_type %q; expected query or passage", inputType)
+	}
+	if strings.HasPrefix(text, "query: ") || strings.HasPrefix(text, "passage: ") {
+		return text, nil
+	}
+	if normalizedInputType == "query" {
+		return "query: " + text, nil
+	}
+	// E5 is trained with passage prefixes for stored/indexed content. Keep
+	// this as the compatibility default for older API clients.
+	return "passage: " + text, nil
 }
 
 // BatchEmbeddingResponse represents a batch embedding response
@@ -76,7 +96,13 @@ func (h *Handler) GenerateEmbedding(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	embedding, err := embeddingService.GenerateEmbedding(r.Context(), req.Text)
+	prefixedText, err := prefixEmbeddingText(req.Text, req.InputType)
+	if err != nil {
+		h.writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	embedding, err := embeddingService.GenerateEmbedding(r.Context(), prefixedText)
 	if err != nil {
 		h.writeError(w, http.StatusInternalServerError, "Embedding generation failed: "+err.Error())
 		return
@@ -112,7 +138,16 @@ func (h *Handler) GenerateEmbeddings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	embeddings, err := embeddingService.GenerateEmbeddings(r.Context(), req.Texts)
+	prefixedTexts := make([]string, len(req.Texts))
+	for i, text := range req.Texts {
+		prefixedText, err := prefixEmbeddingText(text, req.InputType)
+		if err != nil {
+			h.writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		prefixedTexts[i] = prefixedText
+	}
+	embeddings, err := embeddingService.GenerateEmbeddings(r.Context(), prefixedTexts)
 	if err != nil {
 		h.writeError(w, http.StatusInternalServerError, "Batch embedding generation failed: "+err.Error())
 		return

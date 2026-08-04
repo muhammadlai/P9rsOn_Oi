@@ -21,7 +21,8 @@ interface ElectronAppSettings {
 
 declare global {
   interface Window {
-    ipcRenderer: import('electron').IpcRenderer
+    aliceIPC: AliceIPC
+    desktopAPI: AliceDesktopAPI
     electron: {
       resize: (dimensions: { width: number; height: number }) => void
       mini: (minimize: { minimize: boolean }) => void
@@ -67,11 +68,33 @@ declare global {
   }
 }
 
-/*
-  Typed API shapes kept here for reference while the renderer still exposes a
-  broad IPC bridge. Once the bridge is narrowed, these can replace the `any`
-  globals above.
-*/
+interface AliceIPC {
+  on: (
+    channel: string,
+    listener: (...args: any[]) => void
+  ) => void
+  off: (
+    channel: string,
+    listener: (...args: any[]) => void
+  ) => void
+  removeAllListeners: (channel: string) => void
+  send: (channel: string, ...args: any[]) => void
+  invoke: (channel: string, ...args: any[]) => Promise<any>
+}
+
+interface AliceDesktopAPI {
+  listDirectory: (dirPath: string) => Promise<{
+    success: boolean
+    files?: string[]
+    error?: string
+  }>
+  executeCommand: (command: string) => Promise<{
+    success: boolean
+    output?: string
+    error?: string
+  }>
+}
+
 interface AliceCustomToolsAPI {
   list: () => Promise<{
     success: boolean

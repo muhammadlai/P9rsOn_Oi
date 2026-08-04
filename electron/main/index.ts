@@ -1,18 +1,19 @@
 // Fix for hybrid graphics systems (NVIDIA + AMD): Disable GPU before any Electron initialization
 // This prevents GPU process crashes on systems with multiple graphics cards
 process.env.ELECTRON_DISABLE_GPU = '1'
-process.env.ELECTRON_NO_SANDBOX = '1'
 process.env.LIBGL_ALWAYS_SOFTWARE = '1'
 process.env.GALLIUM_DRIVER = 'llvmpipe'
 
-import { app, session } from 'electron'
+import { app, session, BrowserWindow } from 'electron'
 
 app.disableHardwareAcceleration()
 
 import {
   initializeThoughtVectorStore,
+  reindexMultilingualLocalEmbeddings,
   ensureSaveOnQuit as ensureThoughtStoreSave,
 } from './thoughtVectorStore'
+import { reindexRagIfNeeded } from './ragDocumentStore'
 import {
   initializeSchedulerDB,
   loadAndScheduleAllTasks,
@@ -80,8 +81,6 @@ let managersInitialized = global.aliceAppState.managersInitialized
 let appInitialized = global.aliceAppState.appInitialized
 const initId = global.aliceAppState.initId
 
-// Prevent clustering in development
-process.env.ELECTRON_DISABLE_SECURITY_WARNINGS = 'true'
 process.env.NODE_OPTIONS = '--max-old-space-size=4096'
 
 const currentTime = Date.now()
@@ -255,7 +254,7 @@ function startWebSocketServer() {
       const port = startPort + i
       try {
         console.log(`[WebSocket] Trying alternative port ${port}...`)
-        wss = new WebSocketServer({ port })
+        wss = new WebSocketServer({ host: '127.0.0.1', port })
         setupWebSocketHandlers(wss, port)
         return // Success
       } catch (error: any) {
@@ -277,7 +276,7 @@ function startWebSocketServer() {
       const websocketPort = settings?.websocketPort || 5421
 
       try {
-        wss = new WebSocketServer({ port: websocketPort })
+        wss = new WebSocketServer({ host: '127.0.0.1', port: websocketPort })
         setupWebSocketHandlers(wss, websocketPort)
       } catch (error: any) {
         console.error(
@@ -296,7 +295,7 @@ function startWebSocketServer() {
       )
 
       try {
-        wss = new WebSocketServer({ port: 5421 })
+        wss = new WebSocketServer({ host: '127.0.0.1', port: 5421 })
         setupWebSocketHandlers(wss, 5421)
       } catch (serverError: any) {
         console.error(
@@ -440,6 +439,39 @@ app.whenReady().then(async () => {
     const backendStarted = await backendManager.start()
     if (backendStarted) {
       console.log('[Main App Ready] Go AI backend started successfully')
+      void (async () => {
+        try {
+          const result = await reindexMultilingualLocalEmbeddings()
+          if (result.required) {
+            console.log(
+              `[Main App Ready] Automatic multi-lang Memory migration finished: indexed ${result.indexed}.`
+            )
+          }
+        } catch (error) {
+          console.warn(
+            '[Main App Ready] Automatic multi-lang Memory migration will retry on the next launch:',
+            error
+          )
+        }
+
+        if (initialSettings?.ragEnabled && initialSettings.ragPaths?.length) {
+          try {
+            const result = await reindexRagIfNeeded(initialSettings.ragPaths, {
+              recursive: true,
+            })
+            if (result.required) {
+              console.log(
+                `[Main App Ready] Automatic RAG migration finished: indexed ${result.indexed}, skipped ${result.skipped}.`
+              )
+            }
+          } catch (error) {
+            console.warn(
+              '[Main App Ready] Automatic RAG migration will retry on the next launch:',
+              error
+            )
+          }
+        }
+      })()
     } else {
       console.error('[Main App Ready] Failed to start Go AI backend')
     }
@@ -507,7 +539,6 @@ app.on('second-instance', (event, commandLine, workingDirectory) => {
 })
 
 app.on('activate', () => {
-  const { BrowserWindow } = require('electron')
   const allWindows = BrowserWindow.getAllWindows()
   if (allWindows.length) {
     allWindows[0].focus()

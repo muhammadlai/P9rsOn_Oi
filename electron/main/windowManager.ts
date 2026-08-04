@@ -1,6 +1,10 @@
 import { BrowserWindow, screen, shell, protocol } from 'electron'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
+import {
+  resolvePathWithinRoot,
+  validateExternalOpenUrl,
+} from './securityBoundaries'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -38,6 +42,43 @@ let win: BrowserWindow | null = null
 let overlayWindow: BrowserWindow | null = null
 let settingsWindow: BrowserWindow | null = null
 
+function installNavigationGuards(window: BrowserWindow): void {
+  const openExternal = (url: string) => {
+    try {
+      void shell
+        .openExternal(validateExternalOpenUrl(url))
+        .catch(error =>
+          console.warn('[Window Security] Could not open external URL:', error)
+        )
+    } catch (error) {
+      console.warn('[Window Security] Blocked external URL:', url, error)
+    }
+  }
+
+  window.webContents.setWindowOpenHandler(({ url }) => {
+    openExternal(url)
+    return { action: 'deny' }
+  })
+  window.webContents.on('will-navigate', (event, url) => {
+    try {
+      const candidate = new URL(url)
+      if (VITE_DEV_SERVER_URL) {
+        if (candidate.origin === new URL(VITE_DEV_SERVER_URL).origin) return
+      } else if (
+        candidate.protocol === 'file:' &&
+        path.resolve(fileURLToPath(candidate)) ===
+          path.resolve(getIndexHtmlPath())
+      ) {
+        return
+      }
+    } catch {
+      // Invalid renderer navigation is blocked below.
+    }
+    event.preventDefault()
+    openExternal(url)
+  })
+}
+
 export function getMainWindow(): BrowserWindow | null {
   return win
 }
@@ -63,10 +104,16 @@ export async function createMainWindow(): Promise<BrowserWindow> {
     hasShadow: false,
     webPreferences: {
       preload: getPreloadPath(),
+      sandbox: true,
+      contextIsolation: true,
+      nodeIntegration: false,
+      webSecurity: true,
       offscreen: false,
       backgroundThrottling: false,
     },
   })
+
+  installNavigationGuards(win)
 
   if (VITE_DEV_SERVER_URL) {
     win.loadURL(VITE_DEV_SERVER_URL)
@@ -83,13 +130,6 @@ export async function createMainWindow(): Promise<BrowserWindow> {
       'main-process-message',
       `Alice ready at ${new Date().toLocaleString()}`
     )
-  })
-
-  win.webContents.setWindowOpenHandler(({ url }) => {
-    if (url.startsWith('https:') || url.startsWith('http:')) {
-      shell.openExternal(url)
-    }
-    return { action: 'deny' }
   })
 
   return win
@@ -113,10 +153,16 @@ export async function createOverlayWindow(): Promise<BrowserWindow> {
     paintWhenInitiallyHidden: true,
     webPreferences: {
       preload: getPreloadPath(),
+      sandbox: true,
+      contextIsolation: true,
+      nodeIntegration: false,
+      webSecurity: true,
       offscreen: false,
       backgroundThrottling: false,
     },
   })
+
+  installNavigationGuards(overlayWindow)
 
   const arg = 'overlay'
   if (VITE_DEV_SERVER_URL) {
@@ -221,10 +267,16 @@ export async function createSettingsWindow(): Promise<BrowserWindow> {
     show: false,
     webPreferences: {
       preload: getPreloadPath(),
+      sandbox: true,
+      contextIsolation: true,
+      nodeIntegration: false,
+      webSecurity: true,
       offscreen: false,
       backgroundThrottling: false,
     },
   })
+
+  installNavigationGuards(settingsWindow)
 
   const arg = 'settings'
   if (VITE_DEV_SERVER_URL) {
@@ -238,13 +290,6 @@ export async function createSettingsWindow(): Promise<BrowserWindow> {
 
   settingsWindow.on('closed', () => {
     settingsWindow = null
-  })
-
-  settingsWindow.webContents.setWindowOpenHandler(({ url }) => {
-    if (url.startsWith('https:') || url.startsWith('http:')) {
-      shell.openExternal(url)
-    }
-    return { action: 'deny' }
   })
 
   return settingsWindow
@@ -267,17 +312,17 @@ export function registerCustomProtocol(
   customAvatarsPath?: string
 ): void {
   protocol.registerFileProtocol('alice-image', (request, callback) => {
-    const url = request.url.substring('alice-image://'.length)
-    const decodedUrlPath = decodeURIComponent(url)
-    const filePath = path.normalize(
-      path.join(generatedImagesPath, decodedUrlPath)
-    )
-
-    if (filePath.startsWith(path.normalize(generatedImagesPath))) {
+    try {
+      const url = request.url.substring('alice-image://'.length)
+      const decodedUrlPath = decodeURIComponent(url)
+      const filePath = resolvePathWithinRoot(
+        generatedImagesPath,
+        decodedUrlPath
+      )
       callback({ path: filePath })
-    } else {
+    } catch {
       console.error(
-        `[Protocol] Denied access to unsafe path: ${filePath} from URL: ${request.url}`
+        `[Protocol] Denied access to unsafe image path from URL: ${request.url}`
       )
       callback({ error: -6 })
     }
@@ -285,17 +330,17 @@ export function registerCustomProtocol(
 
   if (customAvatarsPath) {
     protocol.registerFileProtocol('alice-avatar', (request, callback) => {
-      const url = request.url.substring('alice-avatar://'.length)
-      const decodedUrlPath = decodeURIComponent(url)
-      const filePath = path.normalize(
-        path.join(customAvatarsPath, decodedUrlPath)
-      )
-
-      if (filePath.startsWith(path.normalize(customAvatarsPath))) {
+      try {
+        const url = request.url.substring('alice-avatar://'.length)
+        const decodedUrlPath = decodeURIComponent(url)
+        const filePath = resolvePathWithinRoot(
+          customAvatarsPath,
+          decodedUrlPath
+        )
         callback({ path: filePath })
-      } else {
+      } catch {
         console.error(
-          `[Protocol] Denied avatar access to unsafe path: ${filePath} from URL: ${request.url}`
+          `[Protocol] Denied access to unsafe avatar path from URL: ${request.url}`
         )
         callback({ error: -6 })
       }

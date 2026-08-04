@@ -1,10 +1,12 @@
 import fs from 'node:fs'
+import path from 'node:path'
 import { defineConfig, loadEnv } from 'vite'
 import tailwindcss from '@tailwindcss/vite'
 import vue from '@vitejs/plugin-vue'
 import electron from 'vite-plugin-electron/simple'
 import { viteStaticCopy } from 'vite-plugin-static-copy'
 import pkg from './package.json'
+import { vadStaticCopyTargets } from './build/vadAssets'
 
 export default defineConfig(({ mode, command }) => {
   fs.rmSync('dist-electron', { recursive: true, force: true })
@@ -16,28 +18,28 @@ export default defineConfig(({ mode, command }) => {
   const QB_BASE_URL = env.VITE_QB_URL
 
   return {
+    resolve: {
+      // vad-web imports this subpath with CommonJS `require()`. Resolve it to
+      // ORT's ESM build so Vite does not embed the CommonJS wrapper (which
+      // otherwise turns ORT's dynamic WASM import into a broken .vite URL).
+      alias: {
+        'onnxruntime-web/wasm': path.resolve(
+          process.cwd(),
+          'node_modules/onnxruntime-web/dist/ort.wasm.min.mjs'
+        ),
+      },
+    },
+    // The VAD package is CommonJS and imports the WASM entrypoint through a
+    // require() call. Force both packages through Vite's ESM pre-bundler so
+    // the renderer never evaluates that CommonJS require at runtime.
+    optimizeDeps: {
+      include: ['@ricky0123/vad-web', 'onnxruntime-web/wasm'],
+    },
     plugins: [
       vue(),
       tailwindcss(),
       viteStaticCopy({
-        targets: [
-          {
-            src: 'node_modules/@ricky0123/vad-web/dist/vad.worklet.bundle.min.js',
-            dest: './',
-          },
-          {
-            src: 'node_modules/@ricky0123/vad-web/dist/silero_vad_v5.onnx',
-            dest: './',
-          },
-          {
-            src: 'node_modules/@ricky0123/vad-web/dist/silero_vad_legacy.onnx',
-            dest: './',
-          },
-          {
-            src: 'node_modules/onnxruntime-web/dist/*.wasm',
-            dest: './',
-          },
-        ],
+        targets: [...vadStaticCopyTargets],
       }),
       electron({
         main: {

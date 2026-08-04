@@ -233,13 +233,13 @@ watch(step, async () => {
 
 onMounted(() => {
   window.electron?.resize?.(WIZARD_WINDOW_SIZE)
-  window.ipcRenderer?.on?.('codex-auth-status-changed', handleCodexStatus)
-  window.ipcRenderer?.on?.('codex-auth-login-completed', handleCodexLogin)
+  window.aliceIPC?.on?.('codex-auth-status-changed', handleCodexStatus)
+  window.aliceIPC?.on?.('codex-auth-login-completed', handleCodexLogin)
 })
 
 onUnmounted(() => {
-  window.ipcRenderer?.off?.('codex-auth-status-changed', handleCodexStatus)
-  window.ipcRenderer?.off?.('codex-auth-login-completed', handleCodexLogin)
+  window.aliceIPC?.off?.('codex-auth-status-changed', handleCodexStatus)
+  window.aliceIPC?.off?.('codex-auth-login-completed', handleCodexLogin)
 })
 
 const toggleLocalModels = (useLocal: boolean) => {
@@ -503,7 +503,7 @@ const testDeepSeekKey = async () => {
 }
 
 const syncCodexStatus = async () => {
-  const status = await window.ipcRenderer.invoke('codex-auth:status')
+  const status = await window.aliceIPC.invoke('codex-auth:status')
   const connected = Boolean(status?.connected)
   formData.codexAuthConnected = connected
   formData.codexAccountLabel = connected ? status.accountLabel || 'Connected' : ''
@@ -529,7 +529,7 @@ const testCodexAuth = async () => {
       return
     }
 
-    const result = await window.ipcRenderer.invoke('codex-auth:start-login')
+    const result = await window.aliceIPC.invoke('codex-auth:start-login')
     if (!result?.success) {
       testResult.codex.error =
         result?.error || 'Failed to start ChatGPT Codex authorization.'
@@ -546,7 +546,7 @@ const testCodexAuth = async () => {
   }
 }
 
-function handleCodexStatus(event: any, status: any) {
+function handleCodexStatus(status: any) {
   const connected = Boolean(status?.connected)
   formData.codexAuthConnected = connected
   formData.codexAccountLabel = connected ? status.accountLabel || 'Connected' : ''
@@ -559,7 +559,7 @@ function handleCodexStatus(event: any, status: any) {
   }
 }
 
-function handleCodexLogin(event: any, payload: any) {
+function handleCodexLogin(payload: any) {
   if (payload?.success === false) {
     testResult.codex.success = false
     testResult.codex.error =
@@ -747,7 +747,7 @@ const closeWizard = () => {
       return
     }
 
-    window.ipcRenderer?.send?.('close-app')
+    window.aliceIPC?.send?.('close-app')
   } catch (error) {
     console.error('Failed to close onboarding wizard:', error)
   }

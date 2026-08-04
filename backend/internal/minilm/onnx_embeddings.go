@@ -5,6 +5,7 @@ import (
 	"archive/zip"
 	"compress/gzip"
 	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"io"
@@ -18,20 +19,36 @@ import (
 	"strings"
 	"sync"
 	"time"
-	"unicode"
 
+	"github.com/sugarme/tokenizer"
+	"github.com/sugarme/tokenizer/pretrained"
 	ort "github.com/yalue/onnxruntime_go"
 )
 
-// OnnxEmbeddingService provides text embedding functionality using ONNX Runtime with pure Go tokenizer
+const (
+	defaultModelName  = "intfloat/multilingual-e5-small"
+	defaultMaxLen     = 512
+	queryPrefix       = "query: "
+	passagePrefix     = "passage: "
+	modelFileName     = "multilingual-e5-small.onnx"
+	tokenizerFileName = "multilingual-e5-small-tokenizer.json"
+	modelRevision     = "614241f622f53c4eeff9890bdc4f31cfecc418b3"
+	modelSHA256       = "4654c156f3e4171abc9c716cdb771bf9116455d15ac1aab364aeeede0e3205b0"
+	tokenizerSHA256   = "0b44a9d7b51c3c62626640cda0e2c2f70fdacdc25bbbd68038369d14ebdf4c39"
+)
+
+// OnnxEmbeddingService provides multilingual text embeddings using ONNX Runtime
+// and the Hugging Face tokenizer JSON format. Tokenization stays in Go so the
+// desktop app does not require Python or PyTorch.
 type OnnxEmbeddingService struct {
-	mu        sync.RWMutex
-	ready     bool
-	config    *Config
-	info      *ServiceInfo
-	tokenizer *wordPiece
-	session   *ort.DynamicAdvancedSession
-	maxLen    int
+	mu          sync.RWMutex
+	inferenceMu sync.Mutex
+	ready       bool
+	config      *Config
+	info        *ServiceInfo
+	tokenizer   *tokenizer.Tokenizer
+	session     *ort.DynamicAdvancedSession
+	maxLen      int
 }
 
 // Ensure OnnxEmbeddingService implements EmbeddingProvider
@@ -39,14 +56,22 @@ var _ EmbeddingProvider = (*OnnxEmbeddingService)(nil)
 
 // NewOnnxEmbeddingService creates a new ONNX-based embedding service
 func NewOnnxEmbeddingService(config *Config) *OnnxEmbeddingService {
+	modelName := config.ModelName
+	if modelName == "" {
+		modelName = defaultModelName
+	}
+	maxLen := config.MaxLen
+	if maxLen <= 0 {
+		maxLen = defaultMaxLen
+	}
 	return &OnnxEmbeddingService{
 		config: config,
-		maxLen: 128, // Standard max length for MiniLM
+		maxLen: maxLen,
 		info: &ServiceInfo{
-			Name:        "ONNX MiniLM Embeddings",
-			Version:     "2.0.0",
+			Name:        "ONNX multilingual embeddings",
+			Version:     "3.0.0",
 			Status:      "initializing",
-			Model:       "all-MiniLM-L6-v2",
+			Model:       modelName,
 			Dimension:   config.Dimension,
 			LastUpdated: time.Now(),
 			Metadata:    make(map[string]string),
@@ -59,7 +84,7 @@ func (s *OnnxEmbeddingService) Initialize(ctx context.Context) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	log.Println("Initializing ONNX embeddings service with pure Go tokenizer...")
+	log.Printf("Initializing ONNX embeddings service (%s)...", s.info.Model)
 
 	// Ensure runtime and model files
 	if err := s.ensureRuntimeAndModel(); err != nil {
@@ -75,7 +100,9 @@ func (s *OnnxEmbeddingService) Initialize(ctx context.Context) error {
 	s.info.Status = "ready"
 	s.info.LastUpdated = time.Now()
 	s.info.Metadata["onnx_runtime"] = "enabled"
-	s.info.Metadata["tokenizer"] = "pure_go_wordpiece"
+	s.info.Metadata["tokenizer"] = "huggingface_tokenizer_json"
+	s.info.Metadata["input_prefixes"] = "query:/passage:"
+	s.info.Metadata["max_length"] = fmt.Sprintf("%d", s.maxLen)
 
 	log.Println("ONNX embeddings service initialized successfully")
 	return nil
@@ -96,16 +123,18 @@ func (s *OnnxEmbeddingService) ensureRuntimeAndModel() error {
 	// Point onnxruntime_go to the shared library
 	ort.SetSharedLibraryPath(libPath)
 
-	// Download model and vocab
-	_, vocabPath, err := ensureMiniLMModel(s.config.ModelPath)
+	// Download the pinned multilingual model and tokenizer.
+	_, tokenizerPath, err := ensureMiniLMModel(s.config.ModelPath)
 	if err != nil {
 		return err
 	}
+	if s.config.TokenizerPath != "" {
+		tokenizerPath = s.config.TokenizerPath
+	}
 
-	// Load vocab-based WordPiece tokenizer (uncased)
-	tk, err := loadWordPiece(vocabPath)
+	tk, err := pretrained.FromFile(tokenizerPath)
 	if err != nil {
-		return err
+		return fmt.Errorf("load tokenizer: %w", err)
 	}
 	s.tokenizer = tk
 	return nil
@@ -120,7 +149,7 @@ func (s *OnnxEmbeddingService) initSession() error {
 	inNames := []string{"input_ids", "attention_mask", "token_type_ids"}
 	outNames := []string{"last_hidden_state"}
 
-	modelPath := filepath.Join(s.config.ModelPath, "model.onnx")
+	modelPath := filepath.Join(s.config.ModelPath, modelFileName)
 	sess, err := ort.NewDynamicAdvancedSession(modelPath, inNames, outNames, nil)
 	if err != nil {
 		return err
@@ -174,19 +203,37 @@ func (s *OnnxEmbeddingService) GenerateEmbeddings(ctx context.Context, texts []s
 	if len(texts) == 0 {
 		return nil, fmt.Errorf("texts cannot be empty")
 	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
+	// Serialize tokenizer/session access. Both the tokenizer and ORT session
+	// contain mutable state and are shared by all HTTP requests.
+	s.inferenceMu.Lock()
+	defer s.inferenceMu.Unlock()
 
 	// Tokenize all texts
-	ids, masks := s.batchTokenize(texts, s.maxLen)
+	ids, masks, err := s.batchTokenize(texts, s.maxLen)
+	if err != nil {
+		return nil, err
+	}
 
 	// Create tensors
 	bsz := len(texts)
-	seq := s.maxLen
+	seq := 1
+	for _, mask := range masks {
+		for i, value := range mask {
+			if value != 0 && i+1 > seq {
+				seq = i + 1
+			}
+		}
+	}
 	inputIDs := make([]int64, bsz*seq)
 	attMask := make([]int64, bsz*seq)
 
 	for i := 0; i < bsz; i++ {
-		copy(inputIDs[i*seq:(i+1)*seq], ids[i])
-		copy(attMask[i*seq:(i+1)*seq], masks[i])
+		copy(inputIDs[i*seq:(i+1)*seq], ids[i][:seq])
+		copy(attMask[i*seq:(i+1)*seq], masks[i][:seq])
 	}
 
 	in1, err := ort.NewTensor[int64](ort.NewShape(int64(bsz), int64(seq)), inputIDs)
@@ -271,25 +318,28 @@ func (s *OnnxEmbeddingService) GenerateEmbeddings(ctx context.Context, texts []s
 }
 
 // batchTokenize tokenizes multiple texts
-func (s *OnnxEmbeddingService) batchTokenize(texts []string, maxLen int) ([][]int64, [][]int64) {
+func (s *OnnxEmbeddingService) batchTokenize(texts []string, maxLen int) ([][]int64, [][]int64, error) {
 	ids := make([][]int64, len(texts))
 	masks := make([][]int64, len(texts))
 	for i, t := range texts {
-		ii, mm := s.encode(t, maxLen)
+		ii, mm, err := s.encode(t, maxLen)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to tokenize input %d: %w", i, err)
+		}
 		ids[i], masks[i] = ii, mm
 	}
-	return ids, masks
+	return ids, masks, nil
 }
 
-func (s *OnnxEmbeddingService) encode(text string, maxLen int) ([]int64, []int64) {
-	toks := basicTokens(text)
-	var pieces []int
-	for _, w := range toks {
-		pieces = append(pieces, s.tokenizer.tokenizeWord(w)...)
+func (s *OnnxEmbeddingService) encode(text string, maxLen int) ([]int64, []int64, error) {
+	encoding, err := s.tokenizer.EncodeSingle(text, true)
+	if err != nil {
+		return nil, nil, fmt.Errorf("tokenizer encode failed: %w", err)
 	}
-	seq := []int{s.tokenizer.clsID}
-	seq = append(seq, pieces...)
-	seq = append(seq, s.tokenizer.sepID)
+	if encoding == nil {
+		return nil, nil, errors.New("tokenizer returned no encoding")
+	}
+	seq := encoding.Ids
 	if len(seq) > maxLen {
 		seq = seq[:maxLen]
 	}
@@ -299,10 +349,7 @@ func (s *OnnxEmbeddingService) encode(text string, maxLen int) ([]int64, []int64
 		ids[i] = int64(v)
 		mask[i] = 1
 	}
-	for i := len(seq); i < maxLen; i++ {
-		ids[i] = 0
-	}
-	return ids, mask
+	return ids, mask, nil
 }
 
 // ComputeSimilarity computes cosine similarity between two embeddings
@@ -392,34 +439,82 @@ func (s *OnnxEmbeddingService) Shutdown(ctx context.Context) error {
 
 // Downloads and model management (adapted from GoLLMCore)
 
-func ensureMiniLMModel(dir string) (modelPath, vocabPath string, err error) {
-	modelPath = filepath.Join(dir, "model.onnx")
-	vocabPath = filepath.Join(dir, "vocab.txt")
+func ensureMiniLMModel(dir string) (modelPath, tokenizerPath string, err error) {
+	modelPath = filepath.Join(dir, modelFileName)
+	tokenizerPath = filepath.Join(dir, tokenizerFileName)
+	baseURL := "https://huggingface.co/" + defaultModelName + "/resolve/" + modelRevision + "/onnx/"
 
-	if _, e := os.Stat(modelPath); e != nil {
-		urls := []string{
-			// ONNX export of MiniLM (Transformers.js format)
-			"https://huggingface.co/Xenova/all-MiniLM-L6-v2/resolve/main/onnx/model.onnx",
-			// Alternate path (some mirrors place model at root)
-			"https://huggingface.co/Xenova/all-MiniLM-L6-v2/resolve/main/model.onnx",
-			// Community ONNX mirrors
-			"https://huggingface.co/onnx-community/all-MiniLM-L6-v2/resolve/main/model.onnx",
+	if err = ensurePinnedArtifact(
+		modelPath,
+		[]string{baseURL + "model_O4.onnx"},
+		modelSHA256,
+		600*time.Second,
+	); err != nil {
+		return "", "", fmt.Errorf("ensure multilingual ONNX model: %w", err)
+	}
+
+	if err = ensurePinnedArtifact(
+		tokenizerPath,
+		[]string{baseURL + "tokenizer.json"},
+		tokenizerSHA256,
+		120*time.Second,
+	); err != nil {
+		return "", "", fmt.Errorf("ensure multilingual tokenizer: %w", err)
+	}
+
+	return modelPath, tokenizerPath, nil
+}
+
+func ensurePinnedArtifact(path string, urls []string, expectedSHA256 string, timeout time.Duration) error {
+	if fileExists(path) {
+		actual, err := sha256File(path)
+		if err == nil && actual == expectedSHA256 {
+			return nil
 		}
-		if err = tryDownload(urls, modelPath, 3, 180*time.Second); err != nil {
-			return "", "", err
+		if err != nil {
+			log.Printf("Unable to verify embedding artifact %s: %v; redownloading", path, err)
+		} else {
+			log.Printf("Checksum mismatch for embedding artifact %s; redownloading", path)
+		}
+		if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return err
 		}
 	}
 
-	if _, e := os.Stat(vocabPath); e != nil {
-		urls := []string{
-			"https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2/resolve/main/vocab.txt",
-		}
-		if err = tryDownload(urls, vocabPath, 3, 60*time.Second); err != nil {
-			return "", "", err
-		}
+	tmpPath := path + ".download"
+	if err := os.Remove(tmpPath); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
 	}
+	if err := tryDownload(urls, tmpPath, 3, timeout); err != nil {
+		return err
+	}
+	actual, err := sha256File(tmpPath)
+	if err != nil {
+		_ = os.Remove(tmpPath)
+		return err
+	}
+	if actual != expectedSHA256 {
+		_ = os.Remove(tmpPath)
+		return fmt.Errorf("checksum mismatch: got %s, want %s", actual, expectedSHA256)
+	}
+	if err := os.Rename(tmpPath, path); err != nil {
+		_ = os.Remove(tmpPath)
+		return err
+	}
+	return nil
+}
 
-	return modelPath, vocabPath, nil
+func sha256File(path string) (string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+	hash := sha256.New()
+	if _, err := io.Copy(hash, f); err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("%x", hash.Sum(nil)), nil
 }
 
 func ensureORTSharedLib() (string, error) {
@@ -659,103 +754,4 @@ func keys(m map[string]bool) []string {
 	}
 	sort.Strings(ks)
 	return ks
-}
-
-// WordPiece tokenizer (pure Go implementation from GoLLMCore)
-
-type wordPiece struct {
-	vocab map[string]int
-	unkID int
-	clsID int
-	sepID int
-	padID int
-}
-
-func loadWordPiece(path string) (*wordPiece, error) {
-	b, err := os.ReadFile(path)
-	if err != nil {
-		return nil, err
-	}
-	lines := strings.Split(string(b), "\n")
-	vp := make(map[string]int, len(lines))
-	for i, line := range lines {
-		tok := strings.TrimSpace(line)
-		if tok == "" {
-			continue
-		}
-		if _, ok := vp[tok]; !ok {
-			vp[tok] = i
-		}
-	}
-	get := func(tok string, def int) int {
-		if id, ok := vp[tok]; ok {
-			return id
-		}
-		return def
-	}
-	return &wordPiece{
-		vocab: vp,
-		unkID: get("[UNK]", 100),
-		clsID: get("[CLS]", 101),
-		sepID: get("[SEP]", 102),
-		padID: get("[PAD]", 0),
-	}, nil
-}
-
-func basicTokens(s string) []string {
-	s = strings.ToLower(s)
-	var out []string
-	var b strings.Builder
-	flush := func() {
-		if b.Len() > 0 {
-			out = append(out, b.String())
-			b.Reset()
-		}
-	}
-	for _, r := range s {
-		if unicode.IsLetter(r) || unicode.IsDigit(r) {
-			b.WriteRune(r)
-		} else {
-			flush()
-		}
-	}
-	flush()
-	return out
-}
-
-func (w *wordPiece) tokenizeWord(tok string) []int {
-	if tok == "" {
-		return nil
-	}
-	var out []int
-	for len(tok) > 0 {
-		end := len(tok)
-		var cur string
-		var id int
-		found := false
-		for end > 0 {
-			sub := tok[:end]
-			candidate := sub
-			if len(out) > 0 {
-				candidate = "##" + sub
-			}
-			if vid, ok := w.vocab[candidate]; ok {
-				cur = candidate
-				id = vid
-				found = true
-				break
-			}
-			end--
-		}
-		if !found {
-			out = append(out, w.unkID)
-			break
-		}
-		out = append(out, id)
-		if strings.HasPrefix(cur, "##") {
-			cur = cur[2:]
-		}
-		tok = tok[len(cur):]
-	}
-	return out
 }

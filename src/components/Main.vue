@@ -97,7 +97,8 @@ const {
 } = storeToRefs(generalStore)
 const { setAudioState } = generalStore
 
-const isElectron = typeof window !== 'undefined' && (window as any).electron
+const isElectron =
+  typeof window !== 'undefined' && Boolean((window as any).electron)
 const audioPlayerElement = vueRef<HTMLAudioElement | null>(null)
 const aiVideoElement = vueRef<HTMLVideoElement | null>(null)
 

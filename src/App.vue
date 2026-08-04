@@ -5,13 +5,6 @@
     <SettingsWindow v-if="showSettings" />
   </template>
   <Main v-else />
-  <CommandApprovalDialog
-    :is-visible="commandApprovalVisible"
-    :command="pendingCommand"
-    :is-minified="generalStore.isMinimized"
-    @approve="handleCommandApproval"
-    @cancel="handleCommandCancel"
-  />
   <div
     role="alert"
     class="alert alert-vertical sm:alert-horizontal update-notification"
@@ -52,7 +45,6 @@ import Main from './components/Main.vue'
 import Overlay from './components/Overlay.vue'
 import OnboardingWizard from './components/wizard/OnboardingWizard.vue'
 import SettingsWindow from './components/SettingsWindow.vue'
-import CommandApprovalDialog from './components/CommandApprovalDialog.vue'
 import { useSettingsStore } from './stores/settingsStore'
 import { useGeneralStore } from './stores/generalStore'
 import { useConversationStore } from './stores/conversationStore'
@@ -81,44 +73,8 @@ const showOnboarding = computed(() => {
 const updateAvailable = ref(false)
 const updateInfo = ref<any>({})
 
-const commandApprovalVisible = ref(false)
-const pendingCommand = ref('')
-const commandApprovalResolve = ref<(value: any) => void>()
-
 const installUpdate = () => {
-  window.ipcRenderer.send('restart-and-install-update')
-}
-
-const handleCommandApproval = (
-  approvalType: 'once' | 'session' | 'forever'
-) => {
-  commandApprovalVisible.value = false
-  const commandName = pendingCommand.value.split(' ')[0]
-
-  if (approvalType === 'forever') {
-    settingsStore.addApprovedCommand(commandName)
-  } else if (approvalType === 'session') {
-    settingsStore.addSessionApprovedCommand(commandName)
-  }
-
-  if (commandApprovalResolve.value) {
-    commandApprovalResolve.value({ approved: true, approvalType })
-  }
-}
-
-const handleCommandCancel = () => {
-  commandApprovalVisible.value = false
-  if (commandApprovalResolve.value) {
-    commandApprovalResolve.value({ approved: false })
-  }
-}
-
-const requestCommandApproval = (command: string): Promise<any> => {
-  return new Promise(resolve => {
-    pendingCommand.value = command
-    commandApprovalVisible.value = true
-    commandApprovalResolve.value = resolve
-  })
+  window.aliceIPC.send('restart-and-install-update')
 }
 
 const handleContextAction = async (data: any) => {
@@ -134,26 +90,25 @@ const handleContextAction = async (data: any) => {
 
 onMounted(async () => {
   await settingsStore.loadSettings()
-  ;(window as any).requestCommandApproval = requestCommandApproval
 
-  if (window.ipcRenderer) {
-    window.ipcRenderer.on('update-downloaded', (event, info) => {
+  if (window.aliceIPC) {
+    window.aliceIPC.on('update-downloaded', info => {
       updateInfo.value = info
       updateAvailable.value = true
     })
 
-    window.ipcRenderer.on('context-action', (event, data) => {
+    window.aliceIPC.on('context-action', data => {
       handleContextAction(data)
     })
 
-    window.ipcRenderer.on('settings-changed', async (event, data) => {
+    window.aliceIPC.on('settings-changed', async data => {
       if (data.type === 'settings-saved' && data.success && data.validationComplete) {
         try {
           generalStore.statusMessage = 'Applying new settings...'
-          const isProduction = await window.ipcRenderer.invoke('app:is-packaged')
+          const isProduction = await window.aliceIPC.invoke('app:is-packaged')
 
           if (isProduction) {
-            await window.ipcRenderer.invoke('app:restart')
+            await window.aliceIPC.invoke('app:restart')
           } else {
             window.location.reload()
           }
@@ -170,12 +125,12 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
-  if (window.ipcRenderer) {
-    window.ipcRenderer.removeAllListeners('update-downloaded')
-    window.ipcRenderer.removeAllListeners('context-action')
-    window.ipcRenderer.removeAllListeners('kokoro-tts-progress')
-    window.ipcRenderer.removeAllListeners('local-embedding-progress')
-    window.ipcRenderer.removeAllListeners('settings-changed')
+  if (window.aliceIPC) {
+    window.aliceIPC.removeAllListeners('update-downloaded')
+    window.aliceIPC.removeAllListeners('context-action')
+    window.aliceIPC.removeAllListeners('kokoro-tts-progress')
+    window.aliceIPC.removeAllListeners('local-embedding-progress')
+    window.aliceIPC.removeAllListeners('settings-changed')
   }
 })
 </script>

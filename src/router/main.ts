@@ -24,7 +24,7 @@ const router = createRouter({
   routes,
 })
 
-router.beforeEach(async (to, from, next) => {
+router.beforeEach(async to => {
   const settingsStore = useSettingsStore()
 
   if (!settingsStore.initialLoadAttempted) {
@@ -40,7 +40,7 @@ router.beforeEach(async (to, from, next) => {
       'Router: Essential settings missing in production. Will open settings window.'
     )
   }
-  next()
+  return true
 })
 
 export default router

@@ -46,6 +46,8 @@ export interface EmbeddingsResult {
   dimension: number
 }
 
+export type EmbeddingInputType = 'query' | 'passage'
+
 export interface Voice {
   id?: string
   name: string
@@ -111,9 +113,9 @@ export class BackendApi {
   async initialize(): Promise<void> {
     try {
       // Check if we're in Electron environment
-      if (typeof window !== 'undefined' && window.ipcRenderer) {
+      if (typeof window !== 'undefined' && window.aliceIPC) {
         // Get API URL from Electron main process
-        const result = await window.ipcRenderer.invoke('backend:get-api-url')
+        const result = await window.aliceIPC.invoke('backend:get-api-url')
         if (result?.success && result.data?.apiUrl) {
           this.baseUrl = result.data.apiUrl
           this.client.defaults.baseURL = this.baseUrl
@@ -362,11 +364,15 @@ export class BackendApi {
   /**
    * Generate embedding for text
    */
-  async generateEmbedding(text: string): Promise<number[]> {
+  async generateEmbedding(
+    text: string,
+    inputType: EmbeddingInputType = 'query'
+  ): Promise<number[]> {
     const response = await this.client.post<ApiResponse<EmbeddingResult>>(
       '/api/embeddings/generate',
       {
         text,
+        input_type: inputType,
       }
     )
 
@@ -382,11 +388,15 @@ export class BackendApi {
   /**
    * Generate embeddings for multiple texts
    */
-  async generateEmbeddings(texts: string[]): Promise<number[][]> {
+  async generateEmbeddings(
+    texts: string[],
+    inputType: EmbeddingInputType = 'passage'
+  ): Promise<number[][]> {
     const response = await this.client.post<ApiResponse<EmbeddingsResult>>(
       '/api/embeddings/generate-batch',
       {
         texts,
+        input_type: inputType,
       }
     )
 

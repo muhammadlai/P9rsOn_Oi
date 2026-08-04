@@ -49,12 +49,12 @@ function normalizeCodexModelIds(result: CodexModelListResult): string[] {
 }
 
 async function listLiveCodexModelIds(): Promise<string[]> {
-  if (typeof window === 'undefined' || !window.ipcRenderer) {
+  if (typeof window === 'undefined' || !window.aliceIPC) {
     return []
   }
 
   try {
-    const result = (await window.ipcRenderer.invoke(
+    const result = (await window.aliceIPC.invoke(
       'codex-models:list'
     )) as CodexModelListResult
     return normalizeCodexModelIds(result)
@@ -401,7 +401,7 @@ async function* streamViaCodexAppServer(
   },
   signal?: AbortSignal
 ): AsyncGenerator<any> {
-  if (typeof window === 'undefined' || !window.ipcRenderer) {
+  if (typeof window === 'undefined' || !window.aliceIPC) {
     throw new Error('Electron IPC bridge is unavailable.')
   }
 
@@ -432,16 +432,16 @@ async function* streamViaCodexAppServer(
     })
   }
 
-  const listener = (_event: any, event: CodexStreamQueueEvent) => {
+  const listener = (event: CodexStreamQueueEvent) => {
     pushEvent(event)
   }
 
   const abort = () => {
-    void window.ipcRenderer.invoke('codex-response:cancel', { requestId })
+    void window.aliceIPC.invoke('codex-response:cancel', { requestId })
     pushEvent({ type: 'error', error: 'The operation was aborted.' })
   }
 
-  window.ipcRenderer.on(channel, listener as any)
+  window.aliceIPC.on(channel, listener as any)
   signal?.addEventListener('abort', abort, { once: true })
 
   try {
@@ -449,7 +449,7 @@ async function* streamViaCodexAppServer(
       throw createAbortError()
     }
 
-    const startResult = await window.ipcRenderer.invoke(
+    const startResult = await window.aliceIPC.invoke(
       'codex-response:start',
       {
         requestId,
@@ -481,7 +481,7 @@ async function* streamViaCodexAppServer(
   } finally {
     finished = true
     signal?.removeEventListener('abort', abort)
-    window.ipcRenderer.off(channel, listener as any)
-    void window.ipcRenderer.invoke('codex-response:cancel', { requestId })
+    window.aliceIPC.off(channel, listener as any)
+    void window.aliceIPC.invoke('codex-response:cancel', { requestId })
   }
 }

@@ -202,14 +202,17 @@ async function clearUpdaterCache(): Promise<string> {
 }
 
 export function checkForUpdates(): void {
+  if (IS_DEV) {
+    log.info(
+      '[AutoUpdater] Skipping automatic update check in development mode'
+    )
+    return
+  }
+
   console.log('[AutoUpdater] Checking for updates...')
   log.info('[AutoUpdater] Initiating update check...')
 
-  if (IS_DEV) {
-    log.info('[AutoUpdater] Development mode - using dev update config')
-  } else {
-    log.info('[AutoUpdater] Production mode - checking GitHub releases')
-  }
+  log.info('[AutoUpdater] Production mode - checking GitHub releases')
 
   autoUpdater.checkForUpdates().catch(err => {
     console.error('[AutoUpdater] Error during update check:', err)

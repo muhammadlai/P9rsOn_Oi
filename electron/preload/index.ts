@@ -1,4 +1,94 @@
-import { ipcRenderer, contextBridge } from 'electron'
+import { contextBridge, ipcRenderer } from 'electron'
+import {
+  isAllowedEventChannel,
+  isAllowedInvokeChannel,
+  isAllowedSendChannel,
+} from './ipcBridgePolicy'
+
+type IpcListener = (...args: any[]) => void
+type IpcListenerWrapper = (...args: any[]) => void
+
+const listenerWrappers = new Map<
+  string,
+  Map<IpcListener, IpcListenerWrapper[]>
+>()
+
+function assertAllowedChannel(
+  channel: string,
+  isAllowed: (channel: string) => boolean,
+  operation: string
+): void {
+  if (typeof channel !== 'string' || !isAllowed(channel)) {
+    throw new Error(`Blocked IPC ${operation} channel: ${String(channel)}`)
+  }
+}
+
+function rememberListenerWrapper(
+  channel: string,
+  listener: IpcListener,
+  wrapper: IpcListenerWrapper
+): void {
+  let channelListeners = listenerWrappers.get(channel)
+  if (!channelListeners) {
+    channelListeners = new Map()
+    listenerWrappers.set(channel, channelListeners)
+  }
+
+  const wrappers = channelListeners.get(listener) ?? []
+  wrappers.push(wrapper)
+  channelListeners.set(listener, wrappers)
+}
+
+function forgetListenerWrapper(
+  channel: string,
+  listener: IpcListener
+): IpcListenerWrapper | undefined {
+  const channelListeners = listenerWrappers.get(channel)
+  const wrappers = channelListeners?.get(listener)
+  const wrapper = wrappers?.pop()
+
+  if (wrappers && wrappers.length === 0) {
+    channelListeners?.delete(listener)
+  }
+  if (channelListeners && channelListeners.size === 0) {
+    listenerWrappers.delete(channel)
+  }
+
+  return wrapper
+}
+
+const aliceIPC = {
+  on(channel: string, listener: IpcListener) {
+    assertAllowedChannel(channel, isAllowedEventChannel, 'event')
+    if (typeof listener !== 'function') {
+      throw new TypeError('IPC event listener must be a function')
+    }
+    const wrapper: IpcListenerWrapper = (_event, ...args) => listener(...args)
+    rememberListenerWrapper(channel, listener, wrapper)
+    ipcRenderer.on(channel, wrapper)
+  },
+  off(channel: string, listener: IpcListener) {
+    assertAllowedChannel(channel, isAllowedEventChannel, 'event')
+    const wrapper = forgetListenerWrapper(channel, listener)
+    if (wrapper) {
+      ipcRenderer.off(channel, wrapper)
+    }
+  },
+  removeAllListeners(channel: string) {
+    assertAllowedChannel(channel, isAllowedEventChannel, 'event')
+    ipcRenderer.removeAllListeners(channel)
+    listenerWrappers.delete(channel)
+  },
+  send(channel: string, ...args: any[]) {
+    assertAllowedChannel(channel, isAllowedSendChannel, 'send')
+    return ipcRenderer.send(channel, ...args)
+  },
+  invoke(channel: string, ...args: any[]) {
+    assertAllowedChannel(channel, isAllowedInvokeChannel, 'invoke')
+    return ipcRenderer.invoke(channel, ...args)
+  },
+}
+
 contextBridge.exposeInMainWorld('electron', {
   resize: (dimensions: { width: number; height: number }) =>
     ipcRenderer.send('resize', dimensions),
@@ -9,31 +99,8 @@ contextBridge.exposeInMainWorld('electron', {
   closeApp: () => ipcRenderer.send('close-app'),
 })
 
-// --------- Expose some API to the Renderer process ---------
-contextBridge.exposeInMainWorld('ipcRenderer', {
-  on(...args: Parameters<typeof ipcRenderer.on>) {
-    const [channel, listener] = args
-    return ipcRenderer.on(channel, (event, ...args) => listener(event, ...args))
-  },
-  off(...args: Parameters<typeof ipcRenderer.off>) {
-    const [channel, ...omit] = args
-    return ipcRenderer.off(channel, ...omit)
-  },
-  send(...args: Parameters<typeof ipcRenderer.send>) {
-    const [channel, ...omit] = args
-    return ipcRenderer.send(channel, ...omit)
-  },
-  invoke(...args: Parameters<typeof ipcRenderer.invoke>) {
-    const [channel, ...omit] = args
-    return ipcRenderer.invoke(channel, ...omit)
-  },
-  once(...args: Parameters<typeof ipcRenderer.once>) {
-    const [channel, listener] = args
-    return ipcRenderer.once(channel, (event, ...args) =>
-      listener(event, ...args)
-    )
-  },
-})
+// --------- Expose a narrow, allowlisted API to the Renderer process ---------
+contextBridge.exposeInMainWorld('aliceIPC', aliceIPC)
 
 contextBridge.exposeInMainWorld('settingsAPI', {
   loadSettings: () => ipcRenderer.invoke('settings:load'),
@@ -77,6 +144,13 @@ contextBridge.exposeInMainWorld('customToolsAPI', {
 contextBridge.exposeInMainWorld('customAvatarsAPI', {
   list: () => ipcRenderer.invoke('custom-avatars:list'),
   refresh: () => ipcRenderer.invoke('custom-avatars:refresh'),
+})
+
+contextBridge.exposeInMainWorld('desktopAPI', {
+  listDirectory: (dirPath: string) =>
+    aliceIPC.invoke('desktop:listDirectory', dirPath),
+  executeCommand: (command: string) =>
+    aliceIPC.invoke('desktop:executeCommand', command),
 })
 
 // --------- Preload scripts loading ---------

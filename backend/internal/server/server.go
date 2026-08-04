@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"log"
+	"net"
 	"net/http"
 	"net/url"
 	"time"
@@ -73,15 +74,19 @@ func (s *Server) Start(port string) error {
 	handler := corsMiddleware(router)
 
 	s.httpServer = &http.Server{
-		Addr:         ":" + port,
+		Addr:         loopbackAddress(port),
 		Handler:      handler,
 		ReadTimeout:  30 * time.Second,
 		WriteTimeout: 30 * time.Second,
 		IdleTimeout:  60 * time.Second,
 	}
 
-	log.Printf("Server starting on port %s", port)
+	log.Printf("Server starting at %s", s.httpServer.Addr)
 	return s.httpServer.ListenAndServe()
+}
+
+func loopbackAddress(port string) string {
+	return net.JoinHostPort("127.0.0.1", port)
 }
 
 func corsMiddleware(next http.Handler) http.Handler {

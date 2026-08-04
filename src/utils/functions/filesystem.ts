@@ -1,5 +1,3 @@
-import { useSettingsStore } from '../../stores/settingsStore'
-
 interface FunctionResult {
   success: boolean
   data?: any
@@ -18,11 +16,20 @@ export interface ExecuteCommandArgs {
   command: string
 }
 
+function requireDesktopAPI() {
+  if (typeof window === 'undefined' || !window.desktopAPI) {
+    throw new Error(
+      'Electron desktop bridge not available. This function only works in the desktop app.'
+    )
+  }
+  return window.desktopAPI
+}
+
 export async function open_path(args: OpenPathArgs): Promise<FunctionResult> {
   console.log(`Invoking open_path with target: ${args.target}`)
 
   try {
-    if (typeof window === 'undefined' || !window.ipcRenderer?.invoke) {
+    if (typeof window === 'undefined' || !window.aliceIPC?.invoke) {
       return {
         success: false,
         error:
@@ -30,7 +37,7 @@ export async function open_path(args: OpenPathArgs): Promise<FunctionResult> {
       }
     }
 
-    const result = await window.ipcRenderer.invoke('electron:open-path', args)
+    const result = await window.aliceIPC.invoke('electron:open-path', args)
     console.log('Main process response for open_path:', result)
 
     if (result.success) {
@@ -51,10 +58,7 @@ export async function list_directory(
   args: ListDirectoryArgs
 ): Promise<FunctionResult> {
   try {
-    const result = await window.ipcRenderer.invoke(
-      'desktop:listDirectory',
-      args.path
-    )
+    const result = await requireDesktopAPI().listDirectory(args.path)
     if (result.success) {
       return { success: true, data: result.files }
     } else {
@@ -69,23 +73,7 @@ export async function execute_command(
   args: ExecuteCommandArgs
 ): Promise<FunctionResult> {
   try {
-    const settingsStore = useSettingsStore()
-    const commandName = args.command.split(' ')[0]
-
-    if (!settingsStore.isCommandApproved(args.command)) {
-      const approvalResult = await (window as any).requestCommandApproval(
-        args.command
-      )
-
-      if (!approvalResult.approved) {
-        return { success: false, error: 'Command execution denied by user' }
-      }
-    }
-
-    const result = await window.ipcRenderer.invoke(
-      'desktop:executeCommand',
-      args.command
-    )
+    const result = await requireDesktopAPI().executeCommand(args.command)
     if (result.success) {
       return { success: true, data: result.output }
     } else {

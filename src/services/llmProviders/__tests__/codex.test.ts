@@ -26,7 +26,7 @@ describe('listCodexModels', () => {
       ],
     })
     ;(globalThis as any).window = {
-      ipcRenderer: { invoke },
+      aliceIPC: { invoke },
     }
 
     await expect(listCodexModels()).resolves.toEqual([
@@ -48,7 +48,7 @@ describe('listCodexModels', () => {
 
   it('falls back to safe static models when discovery fails', async () => {
     ;(globalThis as any).window = {
-      ipcRenderer: {
+      aliceIPC: {
         invoke: vi.fn().mockResolvedValue({ success: false }),
       },
     }
@@ -164,7 +164,7 @@ describe('listCodexModels', () => {
       ])
     )
 
-    const listeners = new Map<string, (event: any, payload: any) => void>()
+    const listeners = new Map<string, (payload: any) => void>()
     const startArgs: any[] = []
     const invoke = vi
       .fn()
@@ -178,10 +178,9 @@ describe('listCodexModels', () => {
         if (channel === 'codex-response:start') {
           startArgs.push(args)
           queueMicrotask(() => {
-            listeners.get(`codex:stream:event:${args.requestId}`)?.(
-              {},
-              { type: 'done' }
-            )
+            listeners.get(`codex:stream:event:${args.requestId}`)?.({
+              type: 'done',
+            })
           })
           return { success: true }
         }
@@ -192,7 +191,7 @@ describe('listCodexModels', () => {
       })
 
     ;(globalThis as any).window = {
-      ipcRenderer: {
+      aliceIPC: {
         invoke,
         on: vi.fn((channel: string, listener: any) => {
           listeners.set(channel, listener)
@@ -249,7 +248,7 @@ describe('listCodexModels', () => {
   })
 
   it('aggregates Codex app-server text for background responses', async () => {
-    const listeners = new Map<string, (event: any, payload: any) => void>()
+    const listeners = new Map<string, (payload: any) => void>()
     const invoke = vi
       .fn()
       .mockImplementation(async (channel: string, args: any) => {
@@ -264,27 +263,21 @@ describe('listCodexModels', () => {
             const listener = listeners.get(
               `codex:stream:event:${args.requestId}`
             )
-            listener?.(
-              {},
-              {
-                type: 'chunk',
-                data: {
-                  type: 'response.output_text.delta',
-                  delta: 'summary ',
-                },
-              }
-            )
-            listener?.(
-              {},
-              {
-                type: 'chunk',
-                data: {
-                  type: 'response.output_text.delta',
-                  delta: 'done',
-                },
-              }
-            )
-            listener?.({}, { type: 'done' })
+            listener?.({
+              type: 'chunk',
+              data: {
+                type: 'response.output_text.delta',
+                delta: 'summary ',
+              },
+            })
+            listener?.({
+              type: 'chunk',
+              data: {
+                type: 'response.output_text.delta',
+                delta: 'done',
+              },
+            })
+            listener?.({ type: 'done' })
           })
           return { success: true }
         }
@@ -295,7 +288,7 @@ describe('listCodexModels', () => {
       })
 
     ;(globalThis as any).window = {
-      ipcRenderer: {
+      aliceIPC: {
         invoke,
         on: vi.fn((channel: string, listener: any) => {
           listeners.set(channel, listener)

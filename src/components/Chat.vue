@@ -91,7 +91,7 @@ const openImageWithSystemViewer = (absoluteFilePath: string) => {
   console.log(
     `Requesting to open image with system viewer at OS path: ${correctedPath}`
   )
-  window.ipcRenderer
+  window.aliceIPC
     .invoke('electron:open-path', { target: correctedPath })
     .then(result => {
       if (!result.success) {
@@ -245,7 +245,7 @@ const handleChatClick = (event: MouseEvent) => {
           href.startsWith('mailto:'))
       ) {
         event.preventDefault()
-        window.ipcRenderer
+        window.aliceIPC
           .invoke('electron:open-path', { target: href })
           .then(result => {
             if (!result.success) {
@@ -253,12 +253,10 @@ const handleChatClick = (event: MouseEvent) => {
                 "Failed to open external link via IPC ('electron:open-path'):",
                 result.message
               )
-              window.open(href, '_blank', 'noopener,noreferrer')
             }
           })
           .catch(err => {
             console.error("Error invoking 'electron:open-path' for link:", err)
-            window.open(href, '_blank', 'noopener,noreferrer')
           })
         return
       }

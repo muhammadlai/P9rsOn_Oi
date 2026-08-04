@@ -263,8 +263,7 @@
                   type="button"
                   class="btn btn-sm btn-primary"
                   :disabled="
-                    codexAuthStatus.isLoading ||
-                    codexAuthStatus.authInProgress
+                    codexAuthStatus.isLoading || codexAuthStatus.authInProgress
                   "
                   @click="startCodexAuth"
                 >
@@ -648,12 +647,12 @@
             class="select select-bordered w-full focus:select-primary"
           >
             <option value="openai">OpenAI (Cloud)</option>
-            <option value="local">Local (all-MiniLM-L6-v2)</option>
+            <option value="local">Local (multi-lang E5)</option>
           </select>
           <p class="text-xs text-gray-400 mt-1">
-            Choose between cloud-based OpenAI embeddings or local
-            all-MiniLM-L6-v2 embeddings. Your existing data is preserved when
-            switching.
+            Choose between cloud-based OpenAI embeddings or local multi-lang E5
+            embeddings. Existing text is preserved; local vectors are rebuilt
+            when the model changes.
           </p>
         </div>
       </div>
@@ -1088,7 +1087,7 @@ onUnmounted(() => {
 
 const refreshRagStats = async () => {
   try {
-    const result = await window.ipcRenderer.invoke('rag:stats')
+    const result = await window.aliceIPC.invoke('rag:stats')
     if (result.success && result.data) {
       ragStats.value = result.data
     }
@@ -1099,7 +1098,7 @@ const refreshRagStats = async () => {
 
 const selectRagPaths = async () => {
   try {
-    const result = await window.ipcRenderer.invoke('rag:select-paths')
+    const result = await window.aliceIPC.invoke('rag:select-paths')
     if (!result.success || !Array.isArray(result.data)) {
       return
     }
@@ -1119,7 +1118,7 @@ const indexRagPaths = async (paths: string[]) => {
   isIndexingRag.value = true
   ragStatusMessage.value = 'Indexing...'
   try {
-    const result = await window.ipcRenderer.invoke('rag:index-paths', {
+    const result = await window.aliceIPC.invoke('rag:index-paths', {
       paths: normalizedPaths,
       recursive: true,
     })
@@ -1144,7 +1143,7 @@ const clearRagIndex = async () => {
   isIndexingRag.value = true
   ragStatusMessage.value = 'Clearing index...'
   try {
-    await window.ipcRenderer.invoke('rag:clear')
+    await window.aliceIPC.invoke('rag:clear')
     ragStatusMessage.value = 'Index cleared'
   } catch (error) {
     ragStatusMessage.value = 'Failed to clear index'
@@ -1166,7 +1165,7 @@ const removeRagDocuments = async (pathItem: string) => {
   isIndexingRag.value = true
   ragStatusMessage.value = 'Removing documents...'
   try {
-    const result = await window.ipcRenderer.invoke('rag:remove-paths', {
+    const result = await window.aliceIPC.invoke('rag:remove-paths', {
       paths: [pathItem],
     })
     if (result.success && result.data) {

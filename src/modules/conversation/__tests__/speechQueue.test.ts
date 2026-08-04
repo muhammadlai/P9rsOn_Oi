@@ -64,7 +64,9 @@ describe('createSpeechQueueManager', () => {
   })
 
   it('silently handles AbortError from TTS stream', async () => {
-    const abortError = Object.assign(new Error('cancel'), { name: 'AbortError' })
+    const abortError = Object.assign(new Error('cancel'), {
+      name: 'AbortError',
+    })
     const deps = buildDependencies({
       ttsStream: vi.fn(async () => {
         throw abortError
@@ -75,6 +77,32 @@ describe('createSpeechQueueManager', () => {
     await manager.enqueueSpeech('Hello')
 
     expect(deps.logError).not.toHaveBeenCalled()
+  })
+
+  it('does not enqueue a response that resolves after cancellation', async () => {
+    let resolveTts: ((response: Response) => void) | undefined
+    const abortController = new AbortController()
+    const ttsStream = vi.fn(
+      () =>
+        new Promise<Response>(resolve => {
+          resolveTts = resolve
+        })
+    )
+    const deps = buildDependencies({
+      createAbortController: vi.fn(() => abortController),
+      ttsStream,
+    })
+    const manager = createSpeechQueueManager(deps)
+
+    const pending = manager.enqueueSpeech('Hello')
+
+    abortController.abort()
+    resolveTts?.(new Response('audio'))
+
+    await pending
+
+    expect(deps.queueAudioForPlayback).not.toHaveBeenCalled()
+    expect(deps.setAudioState).not.toHaveBeenCalled()
   })
 
   it('logs other TTS errors', async () => {
@@ -93,4 +121,3 @@ describe('createSpeechQueueManager', () => {
     )
   })
 })
-

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"path/filepath"
 	"sync"
 
 	"alice-backend/internal/config"
@@ -73,8 +74,11 @@ func (m *Manager) Initialize(ctx context.Context) error {
 	if m.config.Features.Embeddings {
 		log.Println("Initializing embeddings service...")
 		embeddingConfig := &minilm.Config{
-			ModelPath: m.config.Models.MiniLM.Path,
-			Dimension: 384,
+			ModelPath:     m.config.Models.MiniLM.Path,
+			TokenizerPath: filepath.Join(m.config.Models.MiniLM.Path, "multilingual-e5-small-tokenizer.json"),
+			Dimension:     384,
+			ModelName:     "intfloat/multilingual-e5-small",
+			MaxLen:        512,
 		}
 
 		// Always use ONNX implementation with automatic model downloading

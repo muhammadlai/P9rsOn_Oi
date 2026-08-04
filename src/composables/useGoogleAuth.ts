@@ -21,7 +21,7 @@ export function useGoogleAuth() {
     googleAuthStatus.isLoading = true
     googleAuthStatus.error = null
     try {
-      const result = await window.ipcRenderer.invoke(
+      const result = await window.aliceIPC.invoke(
         'google-calendar:check-auth-status'
       )
       if (result.success)
@@ -39,7 +39,7 @@ export function useGoogleAuth() {
     googleAuthStatus.error = null
     googleAuthStatus.message = null
     try {
-      const result = await window.ipcRenderer.invoke(
+      const result = await window.aliceIPC.invoke(
         'google-calendar:get-auth-url'
       )
       if (result.success) googleAuthStatus.message = result.message
@@ -61,7 +61,7 @@ export function useGoogleAuth() {
     googleAuthStatus.error = null
     googleAuthStatus.message = 'Disconnecting...'
     try {
-      const result = await window.ipcRenderer.invoke(
+      const result = await window.aliceIPC.invoke(
         'google-calendar:disconnect'
       )
       if (result.success) {
@@ -81,14 +81,14 @@ export function useGoogleAuth() {
     }
   }
 
-  function handleGoogleAuthSuccess(event: any, message: string) {
+  function handleGoogleAuthSuccess(message: string) {
     googleAuthStatus.isAuthenticated = true
     googleAuthStatus.authInProgress = false
     googleAuthStatus.message = message
     googleAuthStatus.error = null
   }
 
-  function handleGoogleAuthError(event: any, errorMsg: string) {
+  function handleGoogleAuthError(errorMsg: string) {
     googleAuthStatus.isAuthenticated = false
     googleAuthStatus.authInProgress = false
     googleAuthStatus.error = `Authentication failed: ${errorMsg}`
@@ -97,22 +97,22 @@ export function useGoogleAuth() {
 
   onMounted(async () => {
     await checkGoogleAuthStatus()
-    if (window.ipcRenderer) {
-      window.ipcRenderer.on(
+    if (window.aliceIPC) {
+      window.aliceIPC.on(
         'google-auth-loopback-success',
         handleGoogleAuthSuccess
       )
-      window.ipcRenderer.on('google-auth-loopback-error', handleGoogleAuthError)
+      window.aliceIPC.on('google-auth-loopback-error', handleGoogleAuthError)
     }
   })
 
   onUnmounted(() => {
-    if (window.ipcRenderer) {
-      window.ipcRenderer.off(
+    if (window.aliceIPC) {
+      window.aliceIPC.off(
         'google-auth-loopback-success',
         handleGoogleAuthSuccess
       )
-      window.ipcRenderer.off(
+      window.aliceIPC.off(
         'google-auth-loopback-error',
         handleGoogleAuthError
       )
