@@ -44,4 +44,17 @@ describe('buildToolsForProvider', () => {
       partial_images: 2,
     })
   })
+
+  it('uses OpenRouter server-side web search instead of the Tavily function', async () => {
+    const settingsStore = useSettingsStore()
+    settingsStore.updateSetting('aiProvider', 'openrouter')
+
+    const { buildToolsForProvider } = await import('../tools')
+    const tools = await buildToolsForProvider()
+
+    expect(tools).toContainEqual({ type: 'openrouter:web_search' })
+    expect(tools).not.toContainEqual(
+      expect.objectContaining({ name: 'perform_web_search' })
+    )
+  })
 })

@@ -152,7 +152,7 @@ export const createOpenRouterResponse = async (
   if (customInstructions) {
     const openrouterSystemPrompt =
       customInstructions +
-      '\n\nIMPORTANT: You have built-in web search capabilities. When you need to search the web or get current information, you can directly search without using any tools. Do NOT use open_path or other tools for web searches.'
+      '\n\nIMPORTANT: Use the OpenRouter web search tool when you need current information. Do NOT use open_path or other tools for web searches.'
 
     const systemIndex = messages.findIndex(msg => msg.role === 'system')
     if (systemIndex === -1) {
@@ -166,7 +166,7 @@ export const createOpenRouterResponse = async (
         customInstructions.trim() &&
         existing.includes(customInstructions.trim())
       const hasNote = existing.includes(
-        'IMPORTANT: You have built-in web search capabilities.'
+        'IMPORTANT: Use the OpenRouter web search tool when you need current information.'
       )
       let merged = existing
       if (!hasCustom) {
@@ -175,19 +175,16 @@ export const createOpenRouterResponse = async (
           : customInstructions
       }
       if (!hasNote) {
-        merged = `${merged}\n\nIMPORTANT: You have built-in web search capabilities. When you need to search the web or get current information, you can directly search without using any tools. Do NOT use open_path or other tools for web searches.`
+        merged = `${merged}\n\nIMPORTANT: Use the OpenRouter web search tool when you need current information. Do NOT use open_path or other tools for web searches.`
       }
       messages[systemIndex].content = merged.trim()
     }
   }
 
-  const openrouterModel = settings.assistantModel || 'gpt-4.1-mini'
-  const modelWithWebSearch = openrouterModel.includes(':online')
-    ? openrouterModel
-    : `${openrouterModel}:online`
-
-  const params: OpenAI.Chat.ChatCompletionCreateParams = {
-    model: modelWithWebSearch,
+  const params: OpenAI.Chat.ChatCompletionCreateParams & {
+    max_tool_calls?: number
+  } = {
+    model: settings.assistantModel || 'gpt-4.1-mini',
     messages: messages,
     ...(!settings.assistantModel.startsWith('gpt-5')
       ? {
@@ -211,6 +208,8 @@ export const createOpenRouterResponse = async (
             return tool
           })
         : undefined,
+    // OpenRouter server tools can otherwise take up to 30 tool steps per request.
+    max_tool_calls: 1,
     stream: stream,
   }
 

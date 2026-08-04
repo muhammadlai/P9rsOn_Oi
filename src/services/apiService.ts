@@ -445,6 +445,7 @@ export const transcribeWithGoogle = async (
         config: {
           // If we don't specify encoding, Google attempts to detect it from the header (WAV)
           languageCode: languageCode,
+          model: 'latest_short',
         },
         audio: {
           content: base64Audio,

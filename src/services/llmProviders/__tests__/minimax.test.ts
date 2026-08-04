@@ -12,7 +12,11 @@ describe('MiniMax model listing', () => {
       success: true,
       status: 200,
       data: {
-        data: [{ id: 'MiniMax-M2.7' }, { id: 'unrelated-model' }],
+        data: [
+          { id: 'MiniMax-M2.7' },
+          { id: 'MiniMax-M2.5' },
+          { id: 'unrelated-model' },
+        ],
       },
     })
     ;(globalThis as any).window = {
@@ -26,7 +30,10 @@ describe('MiniMax model listing', () => {
       'https://api.minimax.io/v1/'
     )
 
-    expect(models.map(model => model.id)).toEqual(['MiniMax-M2.7'])
+    expect(models.map(model => model.id)).toEqual([
+      'MiniMax-M2.5',
+      'MiniMax-M2.7',
+    ])
     expect(request).toHaveBeenCalledWith(
       expect.objectContaining({
         url: 'https://api.minimax.io/v1/models',

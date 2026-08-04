@@ -22,6 +22,7 @@ export interface ProviderModelDefinition {
 }
 
 export const ZAI_CODING_MODELS: ProviderModelDefinition[] = [
+  { id: 'glm-5.2', displayName: 'GLM-5.2' },
   { id: 'glm-5.1', displayName: 'GLM-5.1' },
   { id: 'glm-5-turbo', displayName: 'GLM-5-Turbo' },
   { id: 'glm-4.7', displayName: 'GLM-4.7' },
@@ -32,6 +33,8 @@ export const MINIMAX_TEXT_MODELS: ProviderModelDefinition[] = [
   { id: 'MiniMax-M3', displayName: 'MiniMax M3' },
   { id: 'MiniMax-M2.7', displayName: 'MiniMax M2.7' },
   { id: 'MiniMax-M2.7-highspeed', displayName: 'MiniMax M2.7 Highspeed' },
+  { id: 'MiniMax-M2.5', displayName: 'MiniMax M2.5' },
+  { id: 'MiniMax-M2.5-highspeed', displayName: 'MiniMax M2.5 Highspeed' },
 ]
 
 export const DEEPSEEK_TEXT_MODELS: ProviderModelDefinition[] = [
@@ -73,7 +76,7 @@ export const PROVIDER_CONFIGS: Record<AIProviderKey, ProviderConfig> = {
   },
   zai: {
     displayName: 'Z.ai',
-    defaultModel: 'glm-5.1',
+    defaultModel: 'glm-5.2',
     nativeWebSearch: false,
   },
   minimax: {
