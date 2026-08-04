@@ -369,7 +369,7 @@ const fallbackToOpenAITTS = async (
 
   return openai.audio.speech.create(
     {
-      model: 'tts-1',
+      model: 'gpt-4o-mini-tts',
       voice: settings.ttsVoice || 'nova',
       input: text,
       response_format: 'mp3',
@@ -801,7 +801,9 @@ export const createSummarizationResponse = async (
       ...(summarizationModel.startsWith('gpt-5')
         ? {
             reasoning: {
-              effort: 'minimal',
+              effort: summarizationModel.startsWith('gpt-5.6')
+                ? 'none'
+                : 'minimal',
             },
             text: {
               verbosity: 'low',
@@ -871,7 +873,9 @@ export const createContextAnalysisResponse = async (
       ...(analysisModel.startsWith('gpt-5')
         ? {
             reasoning: {
-              effort: 'minimal',
+              effort: analysisModel.startsWith('gpt-5.6')
+                ? 'none'
+                : 'minimal',
             },
             text: {
               verbosity: 'low',

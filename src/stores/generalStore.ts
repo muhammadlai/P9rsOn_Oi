@@ -1,6 +1,7 @@
 import { ref, watch } from 'vue'
 import { defineStore } from 'pinia'
 import eventBus from '../utils/eventBus'
+import { isExpectedAbortError } from '../utils/isAbortError'
 import type { ChatMessage } from '../types/chat'
 import { createHistoryManager } from '../modules/conversation/historyManager'
 import { useCustomAvatarsStore } from './customAvatarsStore'
@@ -153,9 +154,11 @@ export const useGeneralStore = defineStore('general', () => {
       videoSource.value = newSource
       aiVideo.value.load()
     }
-    aiVideo.value
-      .play()
-      .catch(e => console.warn('Video play interrupted or failed:', e))
+    aiVideo.value.play().catch(error => {
+      if (!isExpectedAbortError(error)) {
+        console.warn('Video play failed:', error)
+      }
+    })
   }
 
   const handleVideoLoadedData = () => {

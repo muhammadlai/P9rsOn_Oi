@@ -1,6 +1,7 @@
 import type OpenAI from 'openai'
 import type { ChatMessage } from '../../types/chat'
 import type { RagSearchResult } from '../../types/rag'
+import { isExpectedAbortError } from '../../utils/isAbortError'
 
 export interface ChatDependencies {
   isInitialized(): boolean
@@ -453,7 +454,7 @@ export function createChatOrchestrator(
       )
       await dependencies.processStream(streamResult, placeholderTempId, false)
     } catch (error: any) {
-      if (error?.name === 'AbortError') return
+      if (abortController.signal.aborted || isExpectedAbortError(error)) return
 
       dependencies.logError('Error starting OpenAI response stream:', error)
 

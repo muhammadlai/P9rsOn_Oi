@@ -63,21 +63,24 @@ describe('createSpeechQueueManager', () => {
     expect(deps.setAudioState).not.toHaveBeenCalled()
   })
 
-  it('silently handles AbortError from TTS stream', async () => {
-    const abortError = Object.assign(new Error('cancel'), {
-      name: 'AbortError',
-    })
-    const deps = buildDependencies({
-      ttsStream: vi.fn(async () => {
-        throw abortError
-      }),
-    })
-    const manager = createSpeechQueueManager(deps)
+  it.each(['AbortError', 'APIUserAbortError'])(
+    'silently handles %s from TTS stream',
+    async errorName => {
+      const abortError = Object.assign(new Error('cancel'), {
+        name: errorName,
+      })
+      const deps = buildDependencies({
+        ttsStream: vi.fn(async () => {
+          throw abortError
+        }),
+      })
+      const manager = createSpeechQueueManager(deps)
 
-    await manager.enqueueSpeech('Hello')
+      await manager.enqueueSpeech('Hello')
 
-    expect(deps.logError).not.toHaveBeenCalled()
-  })
+      expect(deps.logError).not.toHaveBeenCalled()
+    }
+  )
 
   it('does not enqueue a response that resolves after cancellation', async () => {
     let resolveTts: ((response: Response) => void) | undefined

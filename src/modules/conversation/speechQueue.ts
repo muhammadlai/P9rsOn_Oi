@@ -1,4 +1,5 @@
 import type { AudioState } from '../../stores/generalStore'
+import { isExpectedAbortError } from '../../utils/isAbortError'
 
 export interface SpeechQueueDependencies {
   createAbortController(): AbortController
@@ -42,7 +43,7 @@ export function createSpeechQueueManager(
           dependencies.setAudioState('SPEAKING')
         }
       } catch (error: any) {
-        if (error?.name === 'AbortError') {
+        if (abortController.signal.aborted || isExpectedAbortError(error)) {
           return
         }
         dependencies.logError('TTS stream creation failed:', error)

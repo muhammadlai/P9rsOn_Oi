@@ -477,11 +477,18 @@
             class="select select-bordered w-full focus:select-primary"
           >
             <option value="alloy">Alloy</option>
+            <option value="ash">Ash</option>
+            <option value="ballad">Ballad</option>
+            <option value="coral">Coral</option>
             <option value="echo">Echo</option>
             <option value="fable">Fable</option>
             <option value="nova">Nova</option>
             <option value="onyx">Onyx</option>
+            <option value="sage">Sage</option>
             <option value="shimmer">Shimmer</option>
+            <option value="verse">Verse</option>
+            <option value="marin">Marin (Recommended)</option>
+            <option value="cedar">Cedar (Recommended)</option>
           </select>
         </div>
         <div v-if="currentSettings.ttsProvider === 'google'">
