@@ -48,6 +48,7 @@ describe('buildToolsForProvider', () => {
   it('uses OpenRouter server-side web search instead of the Tavily function', async () => {
     const settingsStore = useSettingsStore()
     settingsStore.updateSetting('aiProvider', 'openrouter')
+    settingsStore.updateSetting('assistantTools', ['perform_web_search'])
 
     const { buildToolsForProvider } = await import('../tools')
     const tools = await buildToolsForProvider()

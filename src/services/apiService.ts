@@ -406,6 +406,27 @@ function mapLanguageToBCP47(isoCode: string): string {
   return mapping[isoCode] || isoCode
 }
 
+const GOOGLE_SYNC_RECOGNITION_MAX_DURATION_SECONDS = 60
+
+function getWavDurationSeconds(audioBuffer: ArrayBuffer): number | null {
+  const view = new DataView(audioBuffer)
+  let offset = 12
+
+  while (offset + 8 <= view.byteLength) {
+    const chunkId = view.getUint32(offset, false)
+    const chunkSize = view.getUint32(offset + 4, true)
+
+    if (chunkId === 0x64617461) {
+      const bytesPerSecond = view.getUint32(28, true)
+      return bytesPerSecond > 0 ? chunkSize / bytesPerSecond : null
+    }
+
+    offset += 8 + chunkSize + (chunkSize % 2)
+  }
+
+  return null
+}
+
 export const transcribeWithGoogle = async (
   audioBuffer: ArrayBuffer
 ): Promise<string> => {
@@ -414,6 +435,16 @@ export const transcribeWithGoogle = async (
 
   if (!apiKey) {
     throw new Error('Google API Key is not configured')
+  }
+
+  const durationSeconds = getWavDurationSeconds(audioBuffer)
+  if (
+    durationSeconds !== null &&
+    durationSeconds > GOOGLE_SYNC_RECOGNITION_MAX_DURATION_SECONDS
+  ) {
+    throw new Error(
+      'Google STT only supports recordings up to 60 seconds. Please retry with a shorter utterance.'
+    )
   }
 
   // Convert ArrayBuffer to Base64 using FileReader (more efficient for large files)
