@@ -97,7 +97,8 @@ export async function buildToolsForProvider(): Promise<any[]> {
       .filter(tool => {
         if (
           tool.type === 'image_generation' ||
-          tool.type === 'web_search_preview'
+          tool.type === 'web_search_preview' ||
+          tool.name === 'perform_web_search'
         ) {
           return false
         }
@@ -115,6 +116,7 @@ export async function buildToolsForProvider(): Promise<any[]> {
         }
         return tool
       })
+    allowedTools.push({ type: 'openrouter:web_search' })
     finalToolsForApi.length = 0
     finalToolsForApi.push(...allowedTools)
   } else if (!PROVIDER_CONFIGS[settings.aiProvider].nativeWebSearch) {

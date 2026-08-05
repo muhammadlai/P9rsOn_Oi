@@ -110,7 +110,7 @@ describe('createOpenAICompatibleResponse', () => {
 
     expect(create).toHaveBeenCalledWith(
       expect.objectContaining({
-        model: 'glm-5.1',
+        model: 'glm-5.2',
       }),
       expect.any(Object)
     )
