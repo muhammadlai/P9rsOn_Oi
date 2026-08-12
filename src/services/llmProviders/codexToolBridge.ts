@@ -22,7 +22,7 @@ function truncateToolResult(text: string): string {
     return text
   }
 
-  const notice = `\n...(Alice truncated tool result: original ${text.length} chars, showing ${CODEX_TOOL_RESULT_MAX_CHARS}.)`
+  const notice = `\n...(Zara truncated tool result: original ${text.length} chars, showing ${CODEX_TOOL_RESULT_MAX_CHARS}.)`
   return `${text.slice(
     0,
     Math.max(0, CODEX_TOOL_RESULT_MAX_CHARS - notice.length)

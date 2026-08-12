@@ -297,6 +297,22 @@ func (s *TTSService) loadVoices() {
 			Description: "Female - Hindi voice (Piper)",
 		},
 		{
+			Name:        "ur_PK-aegis_female-medium",
+			Language:    "ur-PK",
+			Gender:      "female",
+			Quality:     "medium",
+			SampleRate:  22050,
+			Description: "Aegis Female - Urdu voice (Piper)",
+		},
+		{
+			Name:        "ur_PK-fasih-medium",
+			Language:    "ur-PK",
+			Gender:      "male",
+			Quality:     "medium",
+			SampleRate:  22050,
+			Description: "Fasih - Urdu voice (Piper)",
+		},
+		{
 			Name:        "ar_JO-amina-medium",
 			Language:    "ar-JO",
 			Gender:      "female",
@@ -1136,6 +1152,9 @@ func (s *TTSService) downloadVoiceModel(voiceName, modelDir string) error {
 		"uk_UA-ukrainian_tts-medium": {"uk/uk_UA", "ukrainian_tts", "medium"},
 
 		"hi_IN-female-medium": {"hi/hi_IN", "female", "medium"},
+
+		"ur_PK-aegis_female-medium": {"ur/ur_PK", "aegis_female", "medium"},
+		"ur_PK-fasih-medium":        {"ur/ur_PK", "fasih", "medium"},
 
 		"ar_JO-amina-medium": {"ar/ar_JO", "amina", "medium"},
 	}

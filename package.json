@@ -1,9 +1,9 @@
 {
-  "name": "alice-ai-app",
+  "name": "zara-ai-app",
   "version": "1.5.0",
   "main": "dist-electron/main/index.js",
-  "description": "Alice AI assistant app",
-  "author": "pmbstyle",
+  "description": "Zara AI assistant app \u2014 based on the open-source Alice project (https://github.com/pmbstyle/Alice)",
+  "author": "Aitzaz",
   "license": "MIT",
   "private": true,
   "engines": {
@@ -101,5 +101,8 @@
     "rollup": "4.62.4",
     "underscore": "1.13.8",
     "undici": "7.29.0"
-  }
+  },
+  "contributors": [
+    "Slava Trofimov (pmbstyle) \u2014 original Alice project"
+  ]
 }

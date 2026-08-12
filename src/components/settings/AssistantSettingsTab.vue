@@ -103,7 +103,7 @@
             v-model="currentSettings.assistantSystemPrompt"
             rows="8"
             class="textarea textarea-bordered w-full focus:textarea-primary h-48"
-            placeholder="Describe Alice's voice, tone, and personality..."
+            placeholder="Describe Zara's voice, tone, and personality..."
           ></textarea>
         </div>
 

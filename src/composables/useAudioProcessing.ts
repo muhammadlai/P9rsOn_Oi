@@ -138,7 +138,7 @@ export function useAudioProcessing() {
               audioState.value === 'WAITING_FOR_RESPONSE'
             ) {
               console.log(
-                `[VAD Barge-In] User interrupted Alice during ${audioState.value}. Stopping processes.`
+                `[VAD Barge-In] User interrupted Zara during ${audioState.value}. Stopping processes.`
               )
               eventBus.emit('cancel-llm-stream')
               generalStore.stopPlaybackAndClearQueue()

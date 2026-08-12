@@ -644,7 +644,7 @@ async function searxng_web_search(
 
     // Add API key if provided (some instances may require it)
     const headers: Record<string, string> = {
-      'User-Agent': 'Alice-Assistant/1.0',
+      'User-Agent': 'Zara-Assistant/1.0',
     }
     if (SEARXNG_API_KEY) {
       headers['Authorization'] = `Bearer ${SEARXNG_API_KEY}`

@@ -27,7 +27,7 @@
             {{
               generalStore.statusMessage.includes('Error:')
                 ? 'Initialization Failed'
-                : 'Initializing Alice'
+                : 'Initializing Zara'
             }}
           </p>
           <p

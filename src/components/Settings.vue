@@ -181,15 +181,14 @@
         class="text-xs text-gray-400 mt-4 flex justify-center items-center gap-1"
       >
         <span
-          >Alice
+          >Zara AI v{{ appVersion }}. Owner / Creator:
+          <span class="text-green-400">Aitzaz</span>. Based on
           <a
-            :href="
-              'https://github.com/pmbstyle/Alice/releases/tag/v' + appVersion
-            "
+            href="https://github.com/pmbstyle/Alice"
             target="_blank"
             class="link link-hover"
-            >v{{ appVersion }}</a
-          >. Built with</span
+            >Alice</a
+          >, built with</span
         >
         <img :src="heartIcon" class="size-3 inline-block ml-1" />
         <span
@@ -341,18 +340,18 @@ function getToolInfo(name: string): {
   }
 
   const descriptionMap: Record<string, string> = {
-    get_current_datetime: 'Allows Alice to get the current date and time',
+    get_current_datetime: 'Allows Zara to get the current date and time',
     open_path:
-      "Allows Alice to open apps, URLs, files, and folders on the user's computer",
-    manage_clipboard: "Alice can read and write to the user's clipboard",
-    save_memory: 'Alice can store memories (long term memory)',
-    delete_memory: 'Alice can delete memories (long term memory)',
-    recall_memories: 'Alice can recall memories (long term memory)',
+      "Allows Zara to open apps, URLs, files, and folders on the user's computer",
+    manage_clipboard: "Zara can read and write to the user's clipboard",
+    save_memory: 'Zara can store memories (long term memory)',
+    delete_memory: 'Zara can delete memories (long term memory)',
+    recall_memories: 'Zara can recall memories (long term memory)',
     list_directory:
-      "Alice can list the files and folders on the user's computer",
-    execute_command: "Alice can execute shell commands on the user's computer",
-    schedule_task: 'Alice can schedule tasks to run on a recurring basis',
-    manage_scheduled_tasks: 'Alice can manage scheduled tasks',
+      "Zara can list the files and folders on the user's computer",
+    execute_command: "Zara can execute shell commands on the user's computer",
+    schedule_task: 'Zara can schedule tasks to run on a recurring basis',
+    manage_scheduled_tasks: 'Zara can manage scheduled tasks',
     get_calendar_events: 'Google Calendar integration to get calendar events',
     create_calendar_event:
       'Google Calendar integration to create calendar events',
@@ -364,11 +363,11 @@ function getToolInfo(name: string): {
     search_emails: 'Google Gmail integration to search emails',
     get_email_content: 'Google Gmail integration to get email content',
     search_torrents:
-      'Alice can search for torrents on the internet (requires Jackett)',
+      'Zara can search for torrents on the internet (requires Jackett)',
     add_torrent_to_qb:
-      'Alice can add a torrent to qBittorrent (requires qBittorrent)',
+      'Zara can add a torrent to qBittorrent (requires qBittorrent)',
     browser_context:
-      'Alice can get information about the current webpage in users browser (requires browser extension)',
+      'Zara can get information about the current webpage in users browser (requires browser extension)',
     perform_web_search: 'For models that lack web search capabilities (Tavily)',
     searxng_web_search:
       'For models that lack web search capabilities (SearXNG)',

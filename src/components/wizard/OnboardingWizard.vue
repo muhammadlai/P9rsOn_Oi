@@ -171,7 +171,7 @@ const isFinishing = ref(false)
 
 const currentStepTitle = computed(() => {
   const titles = {
-    1: 'Welcome to Alice',
+    1: 'Welcome to Zara AI',
     2: 'AI Provider Setup',
     3: 'Voice & Memory Mode',
     4: 'Final Configuration',
@@ -537,7 +537,7 @@ const testCodexAuth = async () => {
     }
 
     testResult.codex.error =
-      'Browser authorization opened. Finish it, then return to Alice.'
+      'Browser authorization opened. Finish it, then return to Zara.'
   } catch (e: any) {
     testResult.codex.error =
       'ChatGPT Codex authorization failed: ' + (e.message || String(e))

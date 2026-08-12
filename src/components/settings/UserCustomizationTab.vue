@@ -122,7 +122,7 @@
       <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div>
           <p class="text-sm text-gray-300 max-w-2xl">
-            Drop your own tool definitions and scripts into Alice. Tools are stored in
+            Drop your own tool definitions and scripts into Zara. Tools are stored in
             <code class="text-xs bg-gray-800 px-1 py-0.5 rounded">{{ store.filePath || 'user-customization/custom-tools.json' }}</code>.
             Each entry can be edited here, refreshed from disk, or managed manually if you prefer.
           </p>

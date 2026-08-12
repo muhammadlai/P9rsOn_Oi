@@ -76,6 +76,7 @@
             <option value="zh">Chinese</option>
             <option value="ar">Arabic</option>
             <option value="hi">Hindi</option>
+            <option value="ur">Urdu</option>
             <option value="tr">Turkish</option>
             <option value="pl">Polish</option>
             <option value="nl">Dutch</option>
