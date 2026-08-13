@@ -3,7 +3,7 @@
   $schema: 'https://raw.githubusercontent.com/electron-userland/electron-builder/master/packages/app-builder-lib/scheme.json',
   appId: 'zaraaiapp',
   asar: true,
-  productName: 'Zara AI',
+  productName: 'Zara AI 2070',
   directories: {
     output: 'release/${version}',
   },

@@ -1,6 +1,6 @@
 {
-  "name": "zara-ai-app",
-  "version": "1.5.0",
+  "name": "zara-ai-2070",
+  "version": "2.0.0",
   "main": "dist-electron/main/index.js",
   "description": "Zara AI assistant app \u2014 based on the open-source Alice project (https://github.com/pmbstyle/Alice)",
   "author": "Aitzaz",
