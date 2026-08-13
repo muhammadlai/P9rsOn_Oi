@@ -1,6 +1,7 @@
 import { ref, watch, onUnmounted } from 'vue'
 import { useGeneralStore } from '../stores/generalStore'
 import { storeToRefs } from 'pinia'
+import eventBus from '../utils/eventBus'
 
 export function useAudioPlayback() {
   const generalStore = useGeneralStore()
@@ -28,9 +29,13 @@ export function useAudioPlayback() {
       return
     }
     if (audioQueue.value.length === 0) {
-      console.log('[Playback] Queue empty, transitioning state.')
+      // ZARA finished speaking. Continuous conversation: if the mic session is
+      // still active she returns to LISTENING so Aitzaz can follow up without
+      // pressing anything. This is the fix for "answers once then stops".
+      console.log('[Playback] Queue empty, returning to listening.')
       setAudioState(isRecordingRequested.value ? 'LISTENING' : 'IDLE')
       isProcessingQueue.value = false
+      eventBus.emit('zara-turn-complete')
       return
     }
     if (!audioPlayer.value) {

@@ -1697,7 +1697,8 @@ export function registerGoogleIPCHandlers(): void {
                   )
 
                   if (
-                    response.type === 'context_response' &&
+                    (response.type === 'context_response' ||
+                      response.type === 'command_response') &&
                     response.requestId === requestData.requestId
                   ) {
                     console.log(
@@ -1705,7 +1706,19 @@ export function registerGoogleIPCHandlers(): void {
                     )
                     resolved = true
                     clearTimeout(timeout)
-                    resolve({ success: true, data: response })
+                    // The extension reports whether the tab action really
+                    // happened. Never convert a failure into a success.
+                    if (
+                      response.type === 'command_response' &&
+                      response.success === false
+                    ) {
+                      resolve({
+                        success: false,
+                        error: response.error || 'Browser command failed.',
+                      })
+                    } else {
+                      resolve({ success: true, data: response })
+                    }
                     client.removeListener('message', onMessage)
                   } else {
                     console.log(
@@ -1752,6 +1765,18 @@ export function registerGoogleIPCHandlers(): void {
         success: false,
         error: `WebSocket communication error: ${error.message}`,
       }
+    }
+  })
+
+  // Lets the UI show an honest "Browser control: connected / not connected"
+  // state instead of guessing.
+  ipcMain.handle('websocket:bridge-status', async () => {
+    try {
+      const wss = getWebSocketServer()
+      const clients = wss ? wss.clients.size : 0
+      return { connected: clients > 0, clients }
+    } catch {
+      return { connected: false, clients: 0 }
     }
   })
 }

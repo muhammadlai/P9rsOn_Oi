@@ -7,8 +7,16 @@ import { useConversationStore } from '../stores/conversationStore'
 import { useSettingsStore } from '../stores/settingsStore'
 import { storeToRefs } from 'pinia'
 import eventBus from '../utils/eventBus'
+import { matchWakeWord } from '../zara/intentParser'
 
 let ipcListenersRegistered = false
+
+/**
+ * How long after the last exchange ZARA keeps treating speech as a follow-up
+ * without requiring the wake word again.
+ */
+const CONVERSATION_WINDOW_MS = 45_000
+let lastEngagedAt = 0
 
 export function useAudioProcessing() {
   const generalStore = useGeneralStore()
@@ -203,39 +211,43 @@ export function useAudioProcessing() {
     }
   }
 
+  /**
+   * ZARA wake-word gate.
+   *
+   * Wake-word mode is only a GATE for the first utterance of a session. Once
+   * ZARA is engaged, follow-ups within the conversation window do not need the
+   * wake word again — that is what makes conversation continuous.
+   */
   const checkForWakeWord = (
     transcription: string
   ): { hasWakeWord: boolean; command: string } => {
+    // Wake-word gating is opt-in. When off, every utterance is a command.
+    if (!settingsStore.config.wakeWordEnabled) {
+      return { hasWakeWord: true, command: transcription }
+    }
+
+    const match = matchWakeWord(transcription)
+
+    if (match.detected) {
+      wakeWordDetected.value = true
+      awaitingWakeWord.value = false
+      lastEngagedAt = Date.now()
+      // A bare "Zara" still counts — she acknowledges and keeps listening.
+      return { hasWakeWord: true, command: match.command || transcription }
+    }
+
+    // Already engaged and still inside the follow-up window: treat this as a
+    // continuation rather than demanding the wake word again.
     if (
-      !settingsStore.config.localSttEnabled ||
-      !settingsStore.config.localSttWakeWord ||
-      settingsStore.config.sttProvider !== 'local'
+      wakeWordDetected.value &&
+      Date.now() - lastEngagedAt < CONVERSATION_WINDOW_MS
     ) {
+      lastEngagedAt = Date.now()
       return { hasWakeWord: true, command: transcription }
     }
 
-    const wakeWord = settingsStore.config.localSttWakeWord.toLowerCase().trim()
-    const text = transcription.toLowerCase().trim()
-
-    if (!wakeWord) {
-      return { hasWakeWord: true, command: transcription }
-    }
-
-    const patterns = [`hey ${wakeWord}`, `ok ${wakeWord}`, `${wakeWord}`]
-
-    for (const pattern of patterns) {
-      const index = text.indexOf(pattern)
-      if (index !== -1) {
-        const afterWakeWord = transcription.slice(index + pattern.length).trim()
-        const command = afterWakeWord.replace(/^[,.\s]+/, '').trim()
-
-        return {
-          hasWakeWord: true,
-          command: command || transcription,
-        }
-      }
-    }
-
+    // Not engaged, no wake word — stay dormant.
+    awaitingWakeWord.value = true
     return { hasWakeWord: false, command: transcription }
   }
 
@@ -256,25 +268,17 @@ export function useAudioProcessing() {
         await conversationStore.transcribeAudioMessage(wavBuffer)
 
       if (transcription && transcription.trim()) {
-        if (
-          settingsStore.config.localSttEnabled &&
-          settingsStore.config.sttProvider === 'local'
-        ) {
-          const { hasWakeWord, command } = checkForWakeWord(transcription)
+        const { hasWakeWord, command } = checkForWakeWord(transcription)
 
-          if (hasWakeWord) {
-            generalStore.recognizedText = command
-            eventBus.emit('processing-complete', command)
-          } else {
-            console.log(
-              '[Audio Processing] Wake word not detected, continuing to listen'
-            )
-            setAudioState(isRecordingRequested.value ? 'LISTENING' : 'IDLE')
-            isSpeechDetected.value = false
-          }
+        if (hasWakeWord) {
+          generalStore.recognizedText = command
+          eventBus.emit('processing-complete', command)
         } else {
-          generalStore.recognizedText = transcription
-          eventBus.emit('processing-complete', transcription)
+          console.log(
+            '[Audio Processing] Wake word not detected, staying dormant.'
+          )
+          setAudioState(isRecordingRequested.value ? 'LISTENING' : 'IDLE')
+          isSpeechDetected.value = false
         }
       } else {
         setAudioState(isRecordingRequested.value ? 'LISTENING' : 'IDLE')
@@ -298,15 +302,16 @@ export function useAudioProcessing() {
       }
       if (audioState.value === 'IDLE' || audioState.value === 'CONFIG') {
         setAudioState('LISTENING')
-        if (
-          settingsStore.config.localSttEnabled &&
-          settingsStore.config.sttProvider === 'local'
-        ) {
+        if (settingsStore.config.wakeWordEnabled) {
+          // Dormant until "Zara" / "Hey Zara" is heard.
           awaitingWakeWord.value = true
           wakeWordDetected.value = false
         } else {
+          // Manual activation: the mic button itself is the trigger, so ZARA
+          // is engaged immediately and stays engaged between turns.
           awaitingWakeWord.value = false
-          wakeWordDetected.value = false
+          wakeWordDetected.value = true
+          lastEngagedAt = Date.now()
         }
       }
     } else {
@@ -317,6 +322,7 @@ export function useAudioProcessing() {
 
       awaitingWakeWord.value = false
       wakeWordDetected.value = false
+      lastEngagedAt = 0
     }
   })
 

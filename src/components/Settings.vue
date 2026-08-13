@@ -13,6 +13,14 @@
         <button
           type="button"
           class="tab"
+          :class="{ 'tab-active': activeTab === 'zara' }"
+          @click="activeTab = 'zara'"
+        >
+          ⚡ ZARA
+        </button>
+        <button
+          type="button"
+          class="tab"
           :class="{ 'tab-active': activeTab === 'core' }"
           @click="activeTab = 'core'"
         >
@@ -69,6 +77,8 @@
       </div>
 
       <div>
+        <ZaraProfileTab v-if="activeTab === 'zara'" />
+
         <CoreSettingsTab
           v-if="activeTab === 'core'"
           :current-settings="currentSettings"
@@ -219,6 +229,7 @@ import {
   getStaticModelsForProvider,
   type ProviderModelDefinition,
 } from '../services/llmProviders/providerCatalog'
+import ZaraProfileTab from './settings/ZaraProfileTab.vue'
 import CoreSettingsTab from './settings/CoreSettingsTab.vue'
 import AssistantSettingsTab from './settings/AssistantSettingsTab.vue'
 import HotkeysTab from './settings/HotkeysTab.vue'
@@ -236,6 +247,7 @@ const currentSettings = ref<AliceSettings>({
   ...settings.value,
 })
 const activeTab = ref<
+  | 'zara'
   | 'core'
   | 'assistant'
   | 'hotkeys'
@@ -243,7 +255,7 @@ const activeTab = ref<
   | 'security'
   | 'memories'
   | 'customization'
->('core')
+>('zara')
 
 const isRefreshingModels = ref(false)
 

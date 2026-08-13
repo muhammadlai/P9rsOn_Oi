@@ -10,6 +10,12 @@ type Events = {
   'take-screenshot': void
   'cancel-tts': void
   'cancel-llm-stream': void
+  /** Opens the ZARA camera overlay (vision capture). */
+  'zara-open-camera': void
+  /** Camera frame captured and ready for vision analysis. */
+  'zara-camera-frame': { image: string; question: string }
+  /** ZARA finished a turn — used to resume continuous listening. */
+  'zara-turn-complete': void
 }
 
 const eventBus = mitt<Events>()

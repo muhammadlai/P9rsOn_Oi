@@ -38,6 +38,7 @@
             @takeScreenShot="handleTakeScreenshot"
             @togglePlaying="handleToggleTTS"
             @toggleRecording="handleToggleRecording"
+            @openCamera="handleOpenCamera"
             :isElectron="isElectron"
             :isTTSEnabled="isTTSEnabled"
             :audioState="audioState"
@@ -46,6 +47,10 @@
       </div>
       <Sidebar @processRequest="processRequestFromSidebar" />
     </div>
+
+    <ZaraStatusBar />
+    <ZaraConfirmDialog />
+    <ZaraCamera @analyse="handleCameraFrame" />
   </div>
 </template>
 
@@ -55,6 +60,9 @@ import type { CSSProperties } from 'vue'
 import { storeToRefs } from 'pinia'
 import Actions from './Actions.vue'
 import Sidebar from './Sidebar.vue'
+import ZaraStatusBar from './ZaraStatusBar.vue'
+import ZaraConfirmDialog from './ZaraConfirmDialog.vue'
+import ZaraCamera from './ZaraCamera.vue'
 
 import { useGeneralStore } from '../stores/generalStore'
 import { useConversationStore } from '../stores/conversationStore'
@@ -67,6 +75,11 @@ import { useAudioProcessing } from '../composables/useAudioProcessing'
 import { useAudioPlayback } from '../composables/useAudioPlayback'
 import { useScreenshot } from '../composables/useScreenshot'
 import eventBus from '../utils/eventBus'
+import { useZara } from '../composables/useZara'
+import { refreshAllPermissions } from '../zara/permissions'
+import { evaluateAIStatus, isAIConfigured } from '../zara/aiStatus'
+import { readyGreeting, notConfiguredGreeting } from '../zara/identity'
+import { speakText } from '../services/zaraSpeech'
 
 const audioProcessing = useAudioProcessing()
 const { toggleRecordingRequest } = audioProcessing
@@ -81,6 +94,8 @@ const {
 
 const generalStore = useGeneralStore()
 const conversationStore = useConversationStore()
+const zara = useZara()
+const { handleUtterance, resumeListening, stopSpeaking } = zara
 
 const {
   audioState,
@@ -107,6 +122,9 @@ let isProcessingRequest = false
 const avatarRingStyle = computed<CSSProperties>(() => {
   const style: CSSProperties = {
     backgroundColor: '#050505',
+    // Glow reflects ZARA's current presentation state.
+    boxShadow: `0 0 60px ${zara.presentationStyle.value.glow}`,
+    transition: 'box-shadow 0.4s ease-in-out',
   }
   if (avatarFallbackImage.value) {
     style.backgroundImage = `url(${avatarFallbackImage.value})`
@@ -134,7 +152,76 @@ onMounted(async () => {
   eventBus.on('processing-complete', handleProcessingComplete)
   eventBus.on('mute-playback-toggle', handleToggleTTS)
   eventBus.on('take-screenshot', handleTakeScreenshot)
+
+  await runStartupSequence()
 })
+
+/**
+ * ZARA startup:
+ *   LOAD CONFIG → CHECK PERMISSIONS → CHECK AI SERVICE → READY
+ * Every check is non-fatal: a missing key or denied mic degrades a feature,
+ * it never prevents the app from launching.
+ */
+const runStartupSequence = async () => {
+  try {
+    await refreshAllPermissions()
+  } catch (error) {
+    console.warn('[Zara Startup] Permission check failed:', error)
+  }
+
+  let aiConfig: any = null
+  try {
+    aiConfig = await window.aliceIPC?.invoke('zara:ai-config')
+  } catch (error) {
+    console.warn('[Zara Startup] Could not read AI config:', error)
+  }
+
+  evaluateAIStatus({
+    aiProvider: aiConfig?.provider,
+    assistantModel: aiConfig?.model,
+    hasApiKey: Boolean(aiConfig?.hasApiKey),
+    baseUrl: aiConfig?.baseUrl,
+  })
+
+  if (isAIConfigured.value) {
+    generalStore.statusMessage = 'Zara ready'
+    await speakText(readyGreeting())
+  } else {
+    generalStore.statusMessage = 'AI API not configured'
+    await speakText(notConfiguredGreeting())
+  }
+}
+
+/** Camera frame captured — send it to the vision-capable AI turn. */
+const handleCameraFrame = async (payload: {
+  image: string
+  question: string
+}) => {
+  if (!isAIConfigured.value) {
+    generalStore.statusMessage = 'AI API not configured'
+    await speakText(
+      'I can see the camera, but my AI service is not configured yet.'
+    )
+    return
+  }
+
+  generalStore.addMessageToHistory({
+    role: 'user',
+    content: [
+      { type: 'app_text', text: payload.question },
+      { type: 'app_image_uri', uri: payload.image },
+    ],
+  })
+
+  setAudioState('WAITING_FOR_RESPONSE')
+  try {
+    await conversationStore.chat()
+  } catch (error) {
+    console.error('[Zara Vision] Camera analysis failed:', error)
+    generalStore.statusMessage = 'Error: Vision analysis failed'
+    setAudioState(isRecordingRequested.value ? 'LISTENING' : 'IDLE')
+  }
+}
 
 onUnmounted(() => {
   if (isElectron) {
@@ -157,7 +244,16 @@ const handleToggleTTS = () => {
 }
 
 const handleToggleRecording = () => {
+  // Activating the mic also interrupts any speech in progress, so Aitzaz
+  // never has to wait for ZARA to finish before speaking.
+  if (generalStore.audioState === 'SPEAKING') {
+    stopSpeaking()
+  }
   toggleRecordingRequest()
+}
+
+const handleOpenCamera = () => {
+  eventBus.emit('zara-open-camera')
 }
 
 const handleProcessingComplete = (transcription: string) => {
@@ -223,6 +319,47 @@ const processRequest = async (
   isProcessingRequest = true
 
   setAudioState('WAITING_FOR_RESPONSE')
+
+  // ---------------------------------------------------------------------
+  // ZARA command router runs FIRST for both voice and text. Deterministic
+  // commands (open site, search, tab control, app launch, time, memory) are
+  // executed here so they work instantly and even with no API key. Anything
+  // it does not own is delegated to the AI brain below.
+  // ---------------------------------------------------------------------
+  if (text && !generalStore.attachedFile && !screenshotReady.value) {
+    try {
+      const routed = await handleUtterance(
+        text,
+        source === 'VOICE' ? 'VOICE' : 'TEXT'
+      )
+
+      if (routed.handled) {
+        // Show the exchange in the chat panel so voice and text stay in sync.
+        generalStore.addMessageToHistory({
+          role: 'user',
+          content: [{ type: 'app_text', text }],
+        })
+        if (routed.reply) {
+          generalStore.addMessageToHistory({
+            role: 'assistant',
+            content: [{ type: 'app_text', text: routed.reply }],
+          })
+          await speakText(routed.reply)
+        }
+
+        isProcessingRequest = false
+        // Continuous conversation: hand the turn straight back to the mic.
+        if (generalStore.audioState !== 'SPEAKING') {
+          setAudioState(isRecordingRequested.value ? 'LISTENING' : 'IDLE')
+        }
+        eventBus.emit('zara-turn-complete')
+        return
+      }
+    } catch (routerError) {
+      console.error('[Zara Router] Routing failed:', routerError)
+      // Fall through to the AI brain rather than dropping the request.
+    }
+  }
 
   const appContentParts: AppChatMessageContentPart[] = []
 

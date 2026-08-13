@@ -44,6 +44,8 @@ export interface AliceSettings {
   localSttLanguage: string
   localSttEnabled: boolean
   localSttWakeWord: string
+  /** Require the "Zara" wake word before acting on speech. */
+  wakeWordEnabled: boolean
 
   ollamaBaseUrl: string
   lmStudioBaseUrl: string
@@ -155,6 +157,7 @@ const defaultSettings: AliceSettings = {
   localSttLanguage: 'auto',
   localSttEnabled: false,
   localSttWakeWord: 'zara',
+  wakeWordEnabled: false,
 
   ollamaBaseUrl: 'http://localhost:11434',
   lmStudioBaseUrl: 'http://localhost:1234',
@@ -230,6 +233,7 @@ const settingKeyToLabelMap: Record<keyof AliceSettings, string> = {
   localSttLanguage: 'Language',
   localSttEnabled: 'Enable Wake Word',
   localSttWakeWord: 'Wake Word',
+  wakeWordEnabled: 'Wake Word Required',
 
   ollamaBaseUrl: 'Ollama Base URL',
   lmStudioBaseUrl: 'LM Studio Base URL',
@@ -870,6 +874,7 @@ export const useSettingsStore = defineStore('settings', () => {
         localSttLanguage: settings.value.localSttLanguage,
         localSttEnabled: settings.value.localSttEnabled,
         localSttWakeWord: settings.value.localSttWakeWord,
+        wakeWordEnabled: settings.value.wakeWordEnabled,
 
         ollamaBaseUrl: settings.value.ollamaBaseUrl,
         lmStudioBaseUrl: settings.value.lmStudioBaseUrl,

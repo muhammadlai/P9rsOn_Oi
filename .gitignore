@@ -28,7 +28,11 @@ release
 # lockfile
 pnpm-lock.yaml
 yarn.lock
+# Secrets — never commit these. `.env.example` is the committed template.
 .env
+.env.*
+!.env.example
+zara-secrets.bin
 app-config.json
 dev-app-update.yml
 CLAUDE.md

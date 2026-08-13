@@ -47,6 +47,7 @@ import {
   stopCodexAppServer,
 } from './codexAppServerManager'
 import DesktopManager from './desktopManager'
+import { registerZaraIPCHandlers } from './zaraManager'
 import { backendManager } from './backendManager'
 import { setupDependencies } from '../../scripts/setup-dependencies.js'
 
@@ -152,6 +153,7 @@ function initializeManagers(): void {
   registerGoogleIPCHandlers()
   registerAuthIPCHandlers()
   registerCodexIPCHandlers()
+  registerZaraIPCHandlers()
   console.log(`[Main Index ${initId}] Managers initialization complete.`)
 }
 

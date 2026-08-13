@@ -25,6 +25,14 @@
         data-tip="Toggle Chat Panel"
         aria-label="Toggle Chat Panel"
       />
+      <img
+        v-if="!isMinimized"
+        :src="cameraIcon"
+        class="indicator"
+        @click="!isConfigState ? emit('openCamera') : null"
+        data-tip="Open Camera (Zara Vision)"
+        aria-label="Open Camera"
+      />
     </div>
     <div
       class="status-message-container dragable select-none overflow-hidden whitespace-nowrap relative"
@@ -147,7 +155,12 @@ const props = defineProps({
   },
 })
 
-const emit = defineEmits(['takeScreenShot', 'togglePlaying', 'toggleRecording'])
+const emit = defineEmits([
+  'takeScreenShot',
+  'togglePlaying',
+  'toggleRecording',
+  'openCamera',
+])
 
 const generalStore = useGeneralStore()
 const {
