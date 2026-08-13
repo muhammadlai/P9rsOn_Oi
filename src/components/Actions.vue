@@ -105,6 +105,11 @@
           class="dropdown-content menu bg-base-200 bg-opacity-80 rounded-box z-[1] w-36 p-2 shadow"
         >
           <li>
+            <a @click="!isConfigState ? changeSidebarView('dashboard') : null"
+              >Dashboard</a
+            >
+          </li>
+          <li>
             <a @click="!isConfigState ? openSettingsWindow() : null"
               >Settings</a
             >
@@ -238,7 +243,7 @@ const openSettingsWindow = async () => {
   }
 }
 
-const changeSidebarView = (view: 'chat' | 'settings') => {
+const changeSidebarView = (view: 'chat' | 'settings' | 'dashboard') => {
   if (sideBarView.value === view && openSidebar.value) {
     toggleSidebar()
   } else if (sideBarView.value !== view || !openSidebar.value) {

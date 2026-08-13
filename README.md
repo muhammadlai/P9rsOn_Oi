@@ -1,10 +1,14 @@
-# Zara AI
+# Zara AI 2070 — Aitzaz's Personal AI Operating System
 
-A personal AI desktop companion based on the open-source [Alice](https://github.com/pmbstyle/Alice) project.
+**Assistant:** ZARA · **Owner:** AITZAZ · **Version:** 2.0.0
 
-**Owner / Creator: Aitzaz**
+Zara AI 2070 is a personal AI operating system and companion for Aitzaz — built on
+the open-source [Alice](https://github.com/pmbstyle/Alice) project. It is a real
+standalone desktop application (Electron + Vue + Go) with a futuristic animated
+avatar, a voice-first conversation loop, persistent memory, a multi-agent
+architecture, a permission/approval engine, and a personal dashboard.
 
-Say "Hi" to Zara 👋 — an open-source AI companion designed to live on your desktop, now speaking your language: **English, Urdu (اردو), Roman Urdu, and Hindi (हिन्दी)**.
+Say "Hi" to Zara 👋 — she lives on your desktop and speaks your language: **English, Urdu (اردو), Roman Urdu, and Hindi (हिन्दी)**.
 
 Zara addresses you respectfully as **"Sir"** and understands natural code-switching, e.g.:
 
@@ -94,6 +98,32 @@ With the local STT model, you can set a **wake-up word** (like "Hey, Siri").
   - Fact check this
   - Summarize this
   - Tell me more about it
+
+### 🧠 ZARA AI 2070 Foundation (v2.0)
+
+The core is now a modular personal AI operating system:
+
+* **ZARA identity** — a single source of truth for the assistant (ZARA), the owner
+  (AITZAZ), role, primary goals, and real system status.
+* **Multi-agent orchestrator** — a data-driven agent registry (Core, Memory,
+  Productivity, System, Browser, Research, Job, Client, Communication, Coding,
+  GitHub, Vision). ZARA Core routes each request to the right agent.
+* **Permission engine** — safe/read-only actions run automatically; consequential
+  actions (send, push, delete, purchase, submit, edit) require explicit approval.
+* **Activity log** — a secret-safe log of commands, intents, tools, and results.
+  Keys, tokens, and credentials are scrubbed before being recorded.
+* **Task manager & client/lead CRM** — persistent, restart-safe productivity data.
+* **Personal Dashboard** — reachable from the app menu: Today, system status,
+  agents, tasks, clients/leads, and activity.
+* **No-key graceful mode** — the app launches without an API key and shows honest
+  status. Add your key via `.env`/Settings, restart, and Zara becomes fully
+  operational — no rebuild required.
+
+> **Honesty principle:** features that need configuration (browser tab control,
+> computer/window control, screen & camera vision, GitHub push, job/client search,
+> autonomous code edits, always-on wake word) are reported as
+> `requires-config` / `unavailable` rather than faked. See **Known limitations**
+> at the end of this file.
 
 ### 🎛️ Flexible Settings
 
@@ -195,3 +225,43 @@ Install the output from the `release/` directory.
 ## 🤝 Contributing
 
 Ideas, bug reports, feature requests - all welcome! Open an issue or PR. For issues that also affect the upstream project, consider reporting them at [pmbstyle/Alice](https://github.com/pmbstyle/Alice) as well.
+
+## 🔐 Environment Variables
+
+Copy `.env-example` to `.env` and fill in your own values. **Never commit `.env`.**
+The app launches without keys and shows honest "AI SERVICE NOT CONFIGURED" status.
+
+| Variable | Purpose |
+| --- | --- |
+| `AI_API_KEY` / `AI_MODEL` | Generic placeholders for the secure config layer |
+| `VITE_OPENAI_API_KEY` | OpenAI chat/image/TTS/STT/embeddings |
+| `VITE_OPENROUTER_API_KEY` | OpenRouter (400+ models) |
+| `VITE_DEEPSEEK_API_KEY` | DeepSeek chat |
+| `VITE_ZAI_API_KEY` / `VITE_MINIMAX_API_KEY` | Z.ai / MiniMax |
+| `VITE_GROQ_API_KEY` | Groq whisper STT |
+| `VITE_JACKETT_*` / `VITE_QB_*` | Torrent search & download |
+| `VITE_SEARXNG_URL` | Self-hosted web search |
+
+To enable Zara after setup: add your provider key to `.env` (or Settings), restart the
+app, and the AI comes online — no rebuild required.
+
+## ⚠️ Known Limitations
+
+Built honestly — these are not faked:
+
+* **Browser tab control** (back/forward/tabs) and **computer/window control** need a
+  native/browser bridge; reported as `requires-config` until one is wired.
+* **Screen & camera vision** need a vision-capable model and camera permission.
+* **GitHub agent** (push/commit/branch) needs a GitHub token and `git` in the desktop
+  environment; pushes always require approval.
+* **Job search & client finding** need a web-search provider; results are never fabricated.
+* **Autonomous code editing** runs in the desktop app only; edits always require approval.
+* **Always-on wake word** needs a native audio path; VAD is present and gated by permission.
+
+## 🔭 Future Roadmap
+
+Gmail/WhatsApp/Telegram/Discord/Calendar, Google Drive, smart home, more AI models,
+more agents, and more automation — all designed to plug into the modular foundation
+without rebuilding Zara.
+
+## 🤝 Contributing

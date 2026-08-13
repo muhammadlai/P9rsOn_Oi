@@ -13,6 +13,7 @@
         v-if="sideBarView === 'chat'"
       />
       <MemoryManagerComponent v-if="sideBarView === 'memories'" />
+      <Dashboard v-if="sideBarView === 'dashboard'" />
 
       <div
         v-if="
@@ -121,6 +122,7 @@
 import { ref, watch, onMounted, nextTick, computed } from 'vue'
 import Chat from './Chat.vue'
 import MemoryManagerComponent from './MemoryManager.vue'
+import Dashboard from './Dashboard.vue'
 import { useGeneralStore } from '../stores/generalStore'
 import { useSettingsStore } from '../stores/settingsStore'
 import { useConversationStore } from '../stores/conversationStore'
@@ -176,7 +178,9 @@ const openSettingsWindow = async () => {
   }
 }
 
-const changeSidebarView = async (newView: 'chat' | 'memories') => {
+const changeSidebarView = async (
+  newView: 'chat' | 'memories' | 'dashboard'
+) => {
   sideBarView.value = newView
   if (newView === 'chat') {
     shouldAutoScroll.value = true // Ensure we scroll when switching to chat

@@ -222,6 +222,23 @@ const processRequest = async (
   }
   isProcessingRequest = true
 
+  // Record the command and routed intent for the ZARA activity log.
+  try {
+    const { useZaraStore } = await import('../stores/zaraStore')
+    const zara = useZaraStore()
+    const intent = zara.routeIntent(text)
+    zara.recordActivity({
+      userCommand: text,
+      intent: `agent:${intent.agentId}`,
+      tool: 'orchestrator',
+      action: 'route',
+      result: 'SUCCESS',
+      detail: intent.confidence,
+    })
+  } catch (e) {
+    console.error('[ZARA] Failed to record activity:', e)
+  }
+
   setAudioState('WAITING_FOR_RESPONSE')
 
   const appContentParts: AppChatMessageContentPart[] = []
